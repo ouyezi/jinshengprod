@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -41,7 +41,7 @@ LEVELS = ["P5", "P6", "P7", "P8", "P9", "P10"]
 class UserInfo(Base):
     __tablename__ = "user_info"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     current_level: Mapped[str] = mapped_column(String(10), nullable=False)
     target_level: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -71,8 +71,8 @@ class EvaluationRecord(Base):
     __tablename__ = "evaluation_record"
     __table_args__ = (UniqueConstraint("employee_id", "reviewer_name", name="uq_employee_reviewer"),)
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    employee_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     reviewer_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="待提交")
     score_1: Mapped[int | None] = mapped_column(Integer, nullable=True)

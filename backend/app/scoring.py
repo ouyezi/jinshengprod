@@ -25,3 +25,11 @@ def calculate_scores(scores: list[int | None]) -> dict[str, float | None]:
         "avg_output": avg_output,
         "final_score": final_score,
     }
+
+
+def suggest_result(final_score: float) -> tuple[str, str | None]:
+    if final_score <= 2:
+        return ("不通过", "不通过晋升")
+    if final_score >= 4:
+        return ("通过", "通过晋升")
+    return ("评委自选", None)
