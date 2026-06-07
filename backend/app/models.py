@@ -1,0 +1,99 @@
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+DIMENSION_FIELDS = [
+    "pragmatic_desc",
+    "responsibility_desc",
+    "excellence_desc",
+    "innovation_desc",
+    "quality_desc",
+    "architecture_desc",
+    "business_desc",
+    "execution_desc",
+    "teamwork_desc",
+    "influence_desc",
+    "output_desc",
+    "ai_depth_desc",
+]
+
+DIMENSION_LABELS = [
+    "务实",
+    "担当",
+    "追求卓越",
+    "学习创新与效率提升",
+    "技术专业与质量",
+    "架构能力",
+    "业务理解能力",
+    "执行力",
+    "团队协作",
+    "知识传承与影响力",
+    "基础工作产出",
+    "AI使用深度",
+]
+
+LEVELS = ["P5", "P6", "P7", "P8", "P9", "P10"]
+
+
+class UserInfo(Base):
+    __tablename__ = "user_info"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    current_level: Mapped[str] = mapped_column(String(10), nullable=False)
+    target_level: Mapped[str] = mapped_column(String(10), nullable=False)
+    performance_history: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    update_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class PromotionStandard(Base):
+    __tablename__ = "promotion_standard"
+
+    level: Mapped[str] = mapped_column(String(10), primary_key=True)
+    pragmatic_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    responsibility_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    excellence_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    innovation_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    quality_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    architecture_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    business_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    execution_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    teamwork_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    influence_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    output_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    ai_depth_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class EvaluationRecord(Base):
+    __tablename__ = "evaluation_record"
+    __table_args__ = (UniqueConstraint("employee_id", "reviewer_name", name="uq_employee_reviewer"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    reviewer_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="待提交")
+    score_1: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_2: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_3: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_4: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_5: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_6: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_7: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_8: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_9: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_10: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_11: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_12: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avg_values: Mapped[float | None] = mapped_column(nullable=True)
+    avg_capability: Mapped[float | None] = mapped_column(nullable=True)
+    avg_output: Mapped[float | None] = mapped_column(nullable=True)
+    final_score: Mapped[float | None] = mapped_column(nullable=True)
+    sys_suggestion: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    reviewer_result: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    advantage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disadvantage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    update_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
