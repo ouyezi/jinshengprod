@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, Union
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -11,16 +13,15 @@ from app.schemas import UserInfoCreate, UserInfoResponse, UserInfoUpdate
 from app.services.employee import filter_employees_by_keyword
 from app.services.excel import build_template, import_employees
 
-from typing import Optional
 from datetime import datetime
 
 router = APIRouter()
 
 
 def _validate_employee(
-    body: UserInfoCreate | UserInfoUpdate,
+    body: Union[UserInfoCreate, UserInfoUpdate],
     db: Session,
-    exclude_id: int | None = None,
+    exclude_id: Optional[int] = None,
 ):
     if body.current_level not in EMPLOYEE_LEVELS or body.target_level not in EMPLOYEE_LEVELS:
         return fail("职级无效")
