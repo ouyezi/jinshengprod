@@ -14,7 +14,13 @@ def db():
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
-    emp = UserInfo(name="张三", current_level="P6", target_level="P7", update_time=datetime.utcnow())
+    emp = UserInfo(
+        employee_no="SH-TEST-001",
+        name="张三",
+        current_level="P6",
+        target_level="P7",
+        update_time=datetime.utcnow(),
+    )
     session.add(emp)
     session.commit()
     yield session
