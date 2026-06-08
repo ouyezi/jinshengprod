@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Button, Form, Input, Space, Table, message } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button, Form, Input, Space, Table, Tag, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -62,15 +62,9 @@ function formatCell(value: string | number | null | undefined) {
   return value
 }
 
-const columns: ColumnsType<SummaryRow> = SUMMARY_COLUMNS.map(({ title, width }) => ({
-  title,
-  dataIndex: title,
-  key: title,
-  width,
-  ellipsis: title === '突出优势' || title === '待发展项',
-  render: (value: string | number | null) =>
-    SCORE_KEYS.includes(title) ? formatCell(value) : formatCell(value as string | null),
-}))
+function groupKey(row: SummaryRow) {
+  return `${row.评审对象姓名}::${row.评委姓名}`
+}
 
 export default function Summary() {
   const [form] = Form.useForm<SummaryParams>()
@@ -78,6 +72,53 @@ export default function Summary() {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [queryParams, setQueryParams] = useState<SummaryParams>({})
+
+  const duplicateGroups = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of rows) {
+      const key = groupKey(row)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return new Set([...counts.entries()].filter(([, n]) => n >= 2).map(([k]) => k))
+  }, [rows])
+
+  const rowBackground = useCallback(
+    (row: SummaryRow): string | undefined => {
+      const key = groupKey(row)
+      if (duplicateGroups.has(key)) return '#fff7e6'
+      if (row.评委确认结果 === '通过晋升') return '#f6ffed'
+      if (row.评委确认结果 === '不通过晋升') return '#fff1f0'
+      return undefined
+    },
+    [duplicateGroups],
+  )
+
+  const columns: ColumnsType<SummaryRow> = useMemo(
+    () =>
+      SUMMARY_COLUMNS.map(({ title, width }) => ({
+        title,
+        dataIndex: title,
+        key: title,
+        width,
+        ellipsis: title === '突出优势' || title === '待发展项',
+        render: (value: string | number | null, record: SummaryRow) => {
+          if (title === '状态') {
+            return (
+              <Space size={4}>
+                {formatCell(value as string)}
+                {duplicateGroups.has(groupKey(record)) && (
+                  <Tag color="orange">重复提交</Tag>
+                )}
+              </Space>
+            )
+          }
+          return SCORE_KEYS.includes(title)
+            ? formatCell(value)
+            : formatCell(value as string | null)
+        },
+      })),
+    [duplicateGroups],
+  )
 
   const fetchSummary = useCallback(async (params: SummaryParams) => {
     setLoading(true)
@@ -149,12 +190,15 @@ export default function Summary() {
       </Space>
 
       <Table
-        rowKey={(record) => `${record.评审对象姓名}-${record.评委姓名}-${record.修改时间}`}
+        rowKey={(record) => String(record.id)}
         columns={columns}
         dataSource={rows}
         loading={loading}
         scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+        onRow={(record) => ({
+          style: { background: rowBackground(record) },
+        })}
       />
     </div>
   )
