@@ -10,6 +10,9 @@ from app.main import app
 from app.migrate import migrate_evaluation_status_labels
 from app.models import UserInfo, EvaluationRecord
 from app.services.evaluation import (
+    DRAFT_STATUS,
+    READY_SUBMIT_STATUS,
+    generate_result,
     upsert_draft,
     load_evaluation,
     submit_record,
@@ -67,10 +70,10 @@ def test_draft_and_load(db):
         db, employee_id=emp.id, reviewer_name="李评委", scores=[3] * 12,
         advantage="好", disadvantage="待提升",
     )
-    assert rec.status == "待提交"
+    assert rec.status == DRAFT_STATUS
     loaded = load_evaluation(db, emp.id, "李评委")
     assert loaded is not None
-    assert loaded.status == "待提交"
+    assert loaded.status == DRAFT_STATUS
 
 
 def test_load_skips_submitted(db):
@@ -79,7 +82,8 @@ def test_load_skips_submitted(db):
         db, employee_id=emp.id, reviewer_name="王评委",
         scores=[4] * 12, advantage="a", disadvantage="b",
     )
-    rec.status = "待确认"
+    rec.status = READY_SUBMIT_STATUS
+    rec.reviewer_result = "通过晋升"
     rec.final_score = 4.0
     db.commit()
     submit_record(db, rec.id)
@@ -94,7 +98,8 @@ def test_resubmit_creates_new_record(db):
         db, employee_id=emp.id, reviewer_name="王评委",
         scores=[4] * 12, advantage="a", disadvantage="b",
     )
-    rec.status = "待确认"
+    rec.status = READY_SUBMIT_STATUS
+    rec.reviewer_result = "通过晋升"
     db.commit()
     submit_record(db, rec.id)
 
@@ -103,7 +108,7 @@ def test_resubmit_creates_new_record(db):
         scores=[3] * 12, advantage="new", disadvantage="new",
     )
     assert new_rec.id != rec.id
-    assert new_rec.status == "待提交"
+    assert new_rec.status == DRAFT_STATUS
 
     submitted_count = (
         db.query(EvaluationRecord)
@@ -117,10 +122,46 @@ def test_resubmit_creates_new_record(db):
     assert submitted_count == 1
 
 
+def test_upsert_ready_submit_comment_only_keeps_result(db):
+    emp = db.query(UserInfo).first()
+    rec = generate_result(
+        db, emp.id, "陈评委",
+        scores=[4] * 12, advantage="a", disadvantage="b",
+        sys_suggestion="通过", reviewer_result="通过晋升",
+    )
+    assert rec.status == READY_SUBMIT_STATUS
+
+    updated = upsert_draft(
+        db, emp.id, "陈评委",
+        scores=[4] * 12, advantage="新优势", disadvantage="b",
+    )
+    assert updated.status == READY_SUBMIT_STATUS
+    assert updated.reviewer_result == "通过晋升"
+    assert updated.advantage == "新优势"
+
+
+def test_upsert_ready_submit_score_change_clears_result(db):
+    emp = db.query(UserInfo).first()
+    generate_result(
+        db, emp.id, "周评委",
+        scores=[4] * 12, advantage="a", disadvantage="b",
+        sys_suggestion="通过", reviewer_result="通过晋升",
+    )
+
+    updated = upsert_draft(
+        db, emp.id, "周评委",
+        scores=[3] * 12, advantage="a", disadvantage="b",
+    )
+    assert updated.status == READY_SUBMIT_STATUS
+    assert updated.reviewer_result is None
+    assert updated.final_score is None
+
+
 def test_load_api_has_submitted_flag(client, db):
     emp = db.query(UserInfo).first()
     rec = upsert_draft(db, emp.id, "赵评委", [4] * 12, "a", "b")
-    rec.status = "待确认"
+    rec.status = READY_SUBMIT_STATUS
+    rec.reviewer_result = "通过晋升"
     db.commit()
     submit_record(db, rec.id)
 

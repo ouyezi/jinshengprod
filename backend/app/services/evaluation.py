@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from app.models import EvaluationRecord, UserInfo
 from app.scoring import calculate_scores
 
-ACTIVE_STATUSES = ("待提交", "待确认")
+DRAFT_STATUS = "待生成结果"
+READY_SUBMIT_STATUS = "待提交"
 LOCKED_STATUS = "已提交"
+ACTIVE_STATUSES = (DRAFT_STATUS, READY_SUBMIT_STATUS)
 
 
 def _scores_from_record(rec: EvaluationRecord) -> list[Optional[int]]:
@@ -18,6 +20,19 @@ def _scores_from_record(rec: EvaluationRecord) -> list[Optional[int]]:
 def _apply_scores(rec: EvaluationRecord, scores: list[Optional[int]]) -> None:
     for i, s in enumerate(scores, start=1):
         setattr(rec, f"score_{i}", s)
+
+
+def _scores_changed(rec: EvaluationRecord, scores: list[Optional[int]]) -> bool:
+    return _scores_from_record(rec) != list(scores)
+
+
+def _clear_generated_fields(rec: EvaluationRecord) -> None:
+    rec.avg_values = None
+    rec.avg_capability = None
+    rec.avg_output = None
+    rec.final_score = None
+    rec.sys_suggestion = None
+    rec.reviewer_result = None
 
 
 def record_to_dict(rec: EvaluationRecord, employee: Optional[UserInfo] = None) -> dict:
@@ -89,16 +104,29 @@ def upsert_draft(
         rec = EvaluationRecord(
             employee_id=employee_id,
             reviewer_name=reviewer_name,
-            status="待提交",
+            status=DRAFT_STATUS,
             create_time=now,
             update_time=now,
         )
         db.add(rec)
+        _apply_scores(rec, scores)
+        rec.advantage = advantage
+        rec.disadvantage = disadvantage
+        rec.status = DRAFT_STATUS
+        rec.update_time = now
+        db.commit()
+        db.refresh(rec)
+        return rec
 
+    scores_changed = _scores_changed(rec, scores)
     _apply_scores(rec, scores)
     rec.advantage = advantage
     rec.disadvantage = disadvantage
-    rec.status = "待提交"
+    if rec.status == READY_SUBMIT_STATUS:
+        if scores_changed:
+            _clear_generated_fields(rec)
+    else:
+        rec.status = DRAFT_STATUS
     rec.update_time = now
     db.commit()
     db.refresh(rec)
@@ -138,7 +166,7 @@ def generate_result(
     rec.final_score = calc["final_score"]
     rec.sys_suggestion = sys_suggestion
     rec.reviewer_result = reviewer_result
-    rec.status = "待确认"
+    rec.status = READY_SUBMIT_STATUS
     rec.update_time = now
     db.commit()
     db.refresh(rec)
@@ -149,8 +177,10 @@ def submit_record(db: Session, record_id: int) -> EvaluationRecord:
     rec = db.get(EvaluationRecord, record_id)
     if not rec:
         raise ValueError("记录不存在")
-    if rec.status != "待确认":
-        raise ValueError("仅待确认状态可提交")
+    if rec.status != READY_SUBMIT_STATUS:
+        raise ValueError("仅待提交状态可提交")
+    if not rec.reviewer_result:
+        raise ValueError("请先生成结果")
     rec.status = LOCKED_STATUS
     rec.update_time = datetime.utcnow()
     db.commit()
