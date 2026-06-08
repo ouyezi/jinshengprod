@@ -1,6 +1,7 @@
 # Python
 .venv/
 __pycache__/
+.deps_installed
 *.py[cod]
 *.db
 .pytest_cache/
