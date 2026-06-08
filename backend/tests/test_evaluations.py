@@ -1,17 +1,34 @@
 import pytest
 from datetime import datetime
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.database import Base
+from app.database import Base, get_db
+from app.main import app
 from app.models import UserInfo, EvaluationRecord
-from app.services.evaluation import upsert_draft, load_evaluation, submit_record
+from app.services.evaluation import (
+    upsert_draft,
+    load_evaluation,
+    submit_record,
+    has_submitted_record,
+)
 
 
 @pytest.fixture
-def db():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+def engine():
+    eng = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    return eng
+
+
+@pytest.fixture
+def db(engine):
     Session = sessionmaker(bind=engine)
     session = Session()
     emp = UserInfo(
@@ -27,22 +44,87 @@ def db():
     session.close()
 
 
+@pytest.fixture
+def client(engine):
+    Session = sessionmaker(bind=engine)
+
+    def override_get_db():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
 def test_draft_and_load(db):
     emp = db.query(UserInfo).first()
-    rec = upsert_draft(db, employee_id=emp.id, reviewer_name="李评委", scores=[3]*12, advantage="好", disadvantage="待提升")
+    rec = upsert_draft(
+        db, employee_id=emp.id, reviewer_name="李评委", scores=[3] * 12,
+        advantage="好", disadvantage="待提升",
+    )
     assert rec.status == "待提交"
     loaded = load_evaluation(db, emp.id, "李评委")
     assert loaded is not None
     assert loaded.status == "待提交"
 
 
-def test_submit_locked(db):
+def test_load_skips_submitted(db):
     emp = db.query(UserInfo).first()
-    rec = upsert_draft(db, employee_id=emp.id, reviewer_name="王评委", scores=[4]*12, advantage="a", disadvantage="b")
+    rec = upsert_draft(
+        db, employee_id=emp.id, reviewer_name="王评委",
+        scores=[4] * 12, advantage="a", disadvantage="b",
+    )
     rec.status = "待确认"
     rec.final_score = 4.0
     db.commit()
-    result = submit_record(db, rec.id)
-    assert result.status == "已提交"
-    with pytest.raises(ValueError):
-        upsert_draft(db, employee_id=emp.id, reviewer_name="王评委", scores=[1]*12)
+    submit_record(db, rec.id)
+
+    assert load_evaluation(db, emp.id, "王评委") is None
+    assert has_submitted_record(db, emp.id, "王评委") is True
+
+
+def test_resubmit_creates_new_record(db):
+    emp = db.query(UserInfo).first()
+    rec = upsert_draft(
+        db, employee_id=emp.id, reviewer_name="王评委",
+        scores=[4] * 12, advantage="a", disadvantage="b",
+    )
+    rec.status = "待确认"
+    db.commit()
+    submit_record(db, rec.id)
+
+    new_rec = upsert_draft(
+        db, employee_id=emp.id, reviewer_name="王评委",
+        scores=[3] * 12, advantage="new", disadvantage="new",
+    )
+    assert new_rec.id != rec.id
+    assert new_rec.status == "待提交"
+
+    submitted_count = (
+        db.query(EvaluationRecord)
+        .filter(
+            EvaluationRecord.employee_id == emp.id,
+            EvaluationRecord.reviewer_name == "王评委",
+            EvaluationRecord.status == "已提交",
+        )
+        .count()
+    )
+    assert submitted_count == 1
+
+
+def test_load_api_has_submitted_flag(client, db):
+    emp = db.query(UserInfo).first()
+    rec = upsert_draft(db, emp.id, "赵评委", [4] * 12, "a", "b")
+    rec.status = "待确认"
+    db.commit()
+    submit_record(db, rec.id)
+
+    r = client.get("/api/evaluations/load", params={"employee_id": emp.id, "reviewer_name": "赵评委"})
+    assert r.status_code == 200
+    body = r.json()["data"]
+    assert body["record"] is None
+    assert body["has_submitted"] is True

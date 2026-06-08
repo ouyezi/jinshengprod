@@ -42,17 +42,36 @@ def record_to_dict(rec: EvaluationRecord, employee: Optional[UserInfo] = None) -
     }
 
 
-def load_evaluation(db: Session, employee_id: int, reviewer_name: str) -> Optional[EvaluationRecord]:
-    rec = (
+def find_active_record(
+    db: Session, employee_id: int, reviewer_name: str
+) -> Optional[EvaluationRecord]:
+    return (
         db.query(EvaluationRecord)
         .filter(
             EvaluationRecord.employee_id == employee_id,
             EvaluationRecord.reviewer_name == reviewer_name,
-            EvaluationRecord.status.in_(ACTIVE_STATUSES + (LOCKED_STATUS,)),
+            EvaluationRecord.status.in_(ACTIVE_STATUSES),
         )
+        .order_by(EvaluationRecord.update_time.desc())
         .first()
     )
-    return rec
+
+
+def has_submitted_record(db: Session, employee_id: int, reviewer_name: str) -> bool:
+    return (
+        db.query(EvaluationRecord.id)
+        .filter(
+            EvaluationRecord.employee_id == employee_id,
+            EvaluationRecord.reviewer_name == reviewer_name,
+            EvaluationRecord.status == LOCKED_STATUS,
+        )
+        .first()
+        is not None
+    )
+
+
+def load_evaluation(db: Session, employee_id: int, reviewer_name: str) -> Optional[EvaluationRecord]:
+    return find_active_record(db, employee_id, reviewer_name)
 
 
 def upsert_draft(
@@ -63,16 +82,7 @@ def upsert_draft(
     advantage: Optional[str] = None,
     disadvantage: Optional[str] = None,
 ) -> EvaluationRecord:
-    rec = (
-        db.query(EvaluationRecord)
-        .filter(
-            EvaluationRecord.employee_id == employee_id,
-            EvaluationRecord.reviewer_name == reviewer_name,
-        )
-        .first()
-    )
-    if rec and rec.status == LOCKED_STATUS:
-        raise ValueError("该评审已提交，不可修改")
+    rec = find_active_record(db, employee_id, reviewer_name)
 
     now = datetime.utcnow()
     if not rec:
@@ -109,14 +119,7 @@ def generate_result(
         raise ValueError("分数必须在1-5之间")
 
     calc = calculate_scores(scores)
-    rec = (
-        db.query(EvaluationRecord)
-        .filter(
-            EvaluationRecord.employee_id == employee_id,
-            EvaluationRecord.reviewer_name == reviewer_name,
-        )
-        .first()
-    )
+    rec = find_active_record(db, employee_id, reviewer_name)
     now = datetime.utcnow()
     if not rec:
         rec = EvaluationRecord(
@@ -125,8 +128,6 @@ def generate_result(
             create_time=now,
         )
         db.add(rec)
-    if rec.status == LOCKED_STATUS:
-        raise ValueError("该评审已提交，不可修改")
 
     _apply_scores(rec, scores)
     rec.advantage = advantage
@@ -168,6 +169,7 @@ def query_summary(db: Session, employee_name: Optional[str], reviewer_name: Opti
     for rec, emp in q.order_by(EvaluationRecord.update_time.desc()).all():
         scores = _scores_from_record(rec)
         rows.append({
+            "id": rec.id,
             "评审对象姓名": emp.name if emp else "已删除",
             "状态": rec.status,
             "修改时间": rec.update_time.strftime("%Y-%m-%d %H:%M:%S"),
