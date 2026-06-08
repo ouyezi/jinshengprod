@@ -25,6 +25,7 @@ export interface EvaluationRecord {
 export interface LoadEvaluationResponse {
   employee: Employee
   record: EvaluationRecord | null
+  has_submitted: boolean
 }
 
 export interface DraftPayload {
@@ -71,6 +72,7 @@ export interface SummaryParams {
 }
 
 export interface SummaryRow {
+  id: number
   评审对象姓名: string
   状态: string
   修改时间: string
