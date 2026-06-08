@@ -23,15 +23,21 @@ export function useAutoSaveDraft({
   const resetStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = useRef('')
   const payloadRef = useRef<DraftPayload | null>(payload)
+  const enabledRef = useRef(enabled)
   payloadRef.current = payload
+  enabledRef.current = enabled
 
-  const flush = useCallback(async () => {
+  const cancelPending = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
+  }, [])
+
+  const flush = useCallback(async () => {
+    cancelPending()
     const currentPayload = payloadRef.current
-    if (!enabled || !currentPayload) return
+    if (!enabledRef.current || !currentPayload) return
     const key = JSON.stringify(currentPayload)
     if (key === lastSavedRef.current) return
 
@@ -51,7 +57,7 @@ export function useAutoSaveDraft({
       setSaveStatus('idle')
       message.error(err instanceof Error ? err.message : '自动保存失败')
     }
-  }, [enabled, onSaved, setSaveStatus])
+  }, [cancelPending, onSaved, setSaveStatus])
 
   useEffect(() => {
     if (!enabled || !payload) return
@@ -86,5 +92,5 @@ export function useAutoSaveDraft({
     [],
   )
 
-  return { flush }
+  return { flush, cancelPending }
 }

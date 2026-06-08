@@ -125,6 +125,7 @@ export default function Evaluation() {
   const [pendingEmployeeId, setPendingEmployeeId] = useState<number | null>(null)
   const [showSubmittedHint, setShowSubmittedHint] = useState(false)
   const restoredRef = useRef(false)
+  const sessionLockedRef = useRef(false)
 
   const readonly = status === '已提交'
   const canSubmit = status === READY_SUBMIT_STATUS && reviewerResult != null && !readonly
@@ -149,13 +150,14 @@ export default function Evaluation() {
   }, [saveStatus])
 
   const onDraftSaved = useCallback((record: EvaluationRecord) => {
+    if (sessionLockedRef.current) return
     setStatus(record.status)
     setRecordId(record.id)
     setReviewerResult(record.reviewer_result ?? null)
   }, [])
 
-  const { flush } = useAutoSaveDraft({
-    enabled: !readonly && !!draftPayload,
+  const { flush, cancelPending } = useAutoSaveDraft({
+    enabled: !readonly && !sessionLockedRef.current && !!draftPayload,
     payload: draftPayload,
     onSaved: onDraftSaved,
     setSaveStatus,
@@ -213,6 +215,7 @@ export default function Evaluation() {
   }, [loadDraft])
 
   const handleReviewerBlur = async () => {
+    if (sessionLockedRef.current) return
     const name = reviewerName.trim()
     persistReviewerName(name)
     if (!name) return
@@ -246,6 +249,7 @@ export default function Evaluation() {
 
   const handleEmployeeSelect = async (_value: string, option: { id?: number }) => {
     if (!option.id) return
+    sessionLockedRef.current = false
     if (reviewerName.trim()) {
       setPendingEmployeeId(null)
       await flush()
@@ -275,6 +279,8 @@ export default function Evaluation() {
       okText: '确定',
       cancelText: '取消',
       onOk: () => {
+        sessionLockedRef.current = false
+        cancelPending()
         setEmployee(null)
         setEmployeeSearch('')
         setPendingEmployeeId(null)
@@ -283,6 +289,7 @@ export default function Evaluation() {
         setDisadvantage('')
         setStatus(null)
         setRecordId(null)
+        setReviewerResult(null)
         setStandards(Array(12).fill(''))
         setHighlightScores(Array(12).fill(false))
         setHighlightAdvantage(false)
@@ -372,13 +379,22 @@ export default function Evaluation() {
 
   const submitFlow = async () => {
     if (!recordId) return
+    sessionLockedRef.current = true
+    cancelPending()
     setSaving(true)
     try {
       const record = await submitEvaluation(recordId)
       setStatus(record.status)
-      setReviewerResult(record.reviewer_result ?? reviewerResult ?? null)
+      setRecordId(record.id)
+      setScores([...record.scores])
+      setAdvantage(record.advantage ?? '')
+      setDisadvantage(record.disadvantage ?? '')
+      setReviewerResult(record.reviewer_result ?? null)
+      setShowSubmittedHint(false)
+      setSaveStatus('idle')
       message.success('提交成功')
     } catch (err) {
+      sessionLockedRef.current = false
       message.error(err instanceof Error ? err.message : '提交失败')
     } finally {
       setSaving(false)
