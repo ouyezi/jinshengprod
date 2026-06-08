@@ -1,22 +1,50 @@
 import axios from 'axios'
 import client, { getToken } from './client'
 
-export const LEVELS = ['P5', 'P6', 'P7', 'P8', 'P9', 'P10'] as const
+export const LEVELS = ['P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'] as const
+
+export function nextTargetLevel(current: string): string | null {
+  const idx = LEVELS.indexOf(current as (typeof LEVELS)[number])
+  if (idx === -1 || idx === LEVELS.length - 1) return null
+  return LEVELS[idx + 1]
+}
 
 export interface Employee {
   id: number
+  employee_no: string
   name: string
+  division_center: string | null
+  department: string | null
+  education: string | null
+  position: string | null
   current_level: string
   target_level: string
-  performance_history: string | null
+  perf_fy24: string | null
+  perf_fy25: string | null
+  perf_fy25h1: string | null
+  join_date: string | null
+  remark: string | null
+  nomination_status: string | null
+  nomination_reason: string | null
   update_time: string
 }
 
 export interface EmployeePayload {
+  employee_no: string
   name: string
+  division_center?: string | null
+  department?: string | null
+  education?: string | null
+  position?: string | null
   current_level: string
   target_level: string
-  performance_history?: string | null
+  perf_fy24?: string | null
+  perf_fy25?: string | null
+  perf_fy25h1?: string | null
+  join_date?: string | null
+  remark?: string | null
+  nomination_status?: string | null
+  nomination_reason?: string | null
 }
 
 export async function listEmployees(name?: string): Promise<Employee[]> {
@@ -61,7 +89,9 @@ export async function importEmployees(
   return res.data
 }
 
-export async function searchEmployees(q: string): Promise<{ id: number; name: string }[]> {
+export async function searchEmployees(
+  q: string,
+): Promise<{ id: number; name: string; employee_no: string }[]> {
   const res = await client.get('/employees/search', { params: { q } })
   return res.data
 }
