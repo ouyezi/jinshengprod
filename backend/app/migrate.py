@@ -1,7 +1,11 @@
+from datetime import datetime
+
+from passlib.context import CryptContext
 from sqlalchemy import inspect, text
 
+from app.config import settings
 from app.database import SessionLocal, engine
-from app.models import EvaluationRecord, UserInfo
+from app.models import AdminAccount, EvaluationRecord, UserInfo
 from app.services.employee import backfill_name_pinyin
 
 
@@ -135,3 +139,27 @@ def migrate_evaluation_status_labels() -> None:
         conn.execute(
             text("UPDATE evaluation_record SET status = '待提交' WHERE status = '待确认'")
         )
+
+
+def migrate_admin_account() -> None:
+    """确保 admin_account 表存在，且空表时按环境变量初始化一个管理员账号。"""
+    inspector = inspect(engine)
+    if "admin_account" not in inspector.get_table_names():
+        AdminAccount.__table__.create(engine)
+
+    db = SessionLocal()
+    try:
+        if db.query(AdminAccount).count() > 0:
+            return
+
+        pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+        seeded_admin = AdminAccount(
+            username=settings.admin_username,
+            password_hash=pwd_context.hash(settings.admin_password),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(seeded_admin)
+        db.commit()
+    finally:
+        db.close()

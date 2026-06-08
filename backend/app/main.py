@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine, SessionLocal
 from app.migrate import (
+    migrate_admin_account,
     migrate_evaluation_record,
     migrate_evaluation_status_labels,
     migrate_user_info,
@@ -33,6 +34,7 @@ def on_startup():
     migrate_evaluation_record()
     migrate_evaluation_status_labels()
     migrate_user_info_pinyin()
+    migrate_admin_account()
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
