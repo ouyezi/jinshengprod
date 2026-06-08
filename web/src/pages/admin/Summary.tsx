@@ -67,8 +67,8 @@ function groupKey(row: SummaryRow) {
 }
 
 const STATUS_OPTIONS = [
+  { label: '待生成结果', value: '待生成结果' },
   { label: '待提交', value: '待提交' },
-  { label: '待确认', value: '待确认' },
   { label: '已提交', value: '已提交' },
 ]
 
