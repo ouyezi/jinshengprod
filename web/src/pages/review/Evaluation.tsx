@@ -18,12 +18,13 @@ import { DIMENSION_FIELDS, getStandard } from '../../api/standards'
 import {
   generateResult,
   loadEvaluation,
-  saveDraft,
   submitEvaluation,
+  type DraftPayload,
   type EvaluationRecord,
 } from '../../api/evaluations'
 import type { Employee } from '../../api/employees'
 import ScoreMatrix from '../../components/ScoreMatrix'
+import { type SaveStatus, useAutoSaveDraft } from '../../hooks/useAutoSaveDraft'
 import { calculateScores, suggestResult } from '../../utils/scoring'
 
 const { Title, Text, Paragraph } = Typography
@@ -117,6 +118,7 @@ export default function Evaluation() {
   const [standards, setStandards] = useState<string[]>(Array(12).fill(''))
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [highlightScores, setHighlightScores] = useState<boolean[]>(Array(12).fill(false))
   const [highlightAdvantage, setHighlightAdvantage] = useState(false)
   const [highlightDisadvantage, setHighlightDisadvantage] = useState(false)
@@ -129,6 +131,35 @@ export default function Evaluation() {
   const needsRegenerate = status === READY_SUBMIT_STATUS && reviewerResult == null && !readonly
 
   const computed = useMemo(() => calculateScores(scores), [scores])
+  const draftPayload = useMemo<DraftPayload | null>(() => {
+    if (!employee || !reviewerName.trim() || readonly) return null
+    return {
+      employee_id: employee.id,
+      reviewer_name: reviewerName.trim(),
+      scores,
+      advantage: advantage || null,
+      disadvantage: disadvantage || null,
+    }
+  }, [employee, reviewerName, scores, advantage, disadvantage, readonly])
+
+  const saveStatusText = useMemo(() => {
+    if (saveStatus === 'saving') return '自动保存中...'
+    if (saveStatus === 'saved') return '已自动保存'
+    return ''
+  }, [saveStatus])
+
+  const onDraftSaved = useCallback((record: EvaluationRecord) => {
+    setStatus(record.status)
+    setRecordId(record.id)
+    setReviewerResult(record.reviewer_result ?? null)
+  }, [])
+
+  const { flush } = useAutoSaveDraft({
+    enabled: !readonly && !!draftPayload,
+    payload: draftPayload,
+    onSaved: onDraftSaved,
+    setSaveStatus,
+  })
 
   const fetchStandards = useCallback(async (targetLevel: string) => {
     try {
@@ -181,12 +212,13 @@ export default function Evaluation() {
     }
   }, [loadDraft])
 
-  const handleReviewerBlur = () => {
+  const handleReviewerBlur = async () => {
     const name = reviewerName.trim()
     persistReviewerName(name)
     if (!name) return
     const id = employee?.id ?? pendingEmployeeId
     if (id) {
+      await flush()
       loadDraft(id, name)
       setPendingEmployeeId(null)
     }
@@ -212,10 +244,11 @@ export default function Evaluation() {
     }
   }
 
-  const handleEmployeeSelect = (_value: string, option: { id?: number }) => {
+  const handleEmployeeSelect = async (_value: string, option: { id?: number }) => {
     if (!option.id) return
     if (reviewerName.trim()) {
       setPendingEmployeeId(null)
+      await flush()
       loadDraft(option.id, reviewerName)
     } else {
       setPendingEmployeeId(option.id)
@@ -255,32 +288,10 @@ export default function Evaluation() {
         setHighlightAdvantage(false)
         setHighlightDisadvantage(false)
         setShowSubmittedHint(false)
+        setSaveStatus('idle')
         persistEmployeeId(null)
       },
     })
-  }
-
-  const handleSaveDraft = async () => {
-    if (!validateReviewerAndEmployee() || !employee) return
-
-    setSaving(true)
-    try {
-      const record = await saveDraft({
-        employee_id: employee.id,
-        reviewer_name: reviewerName.trim(),
-        scores,
-        advantage: advantage || null,
-        disadvantage: disadvantage || null,
-      })
-      setStatus(record.status)
-      setRecordId(record.id)
-      setReviewerResult(record.reviewer_result ?? null)
-      message.success('暂存成功')
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '暂存失败')
-    } finally {
-      setSaving(false)
-    }
   }
 
   const validateForGenerate = (): boolean => {
@@ -525,7 +536,15 @@ export default function Evaluation() {
               highlightScores={highlightScores}
             />
 
-            <Card size="small" title="实时计分">
+            <Card
+              size="small"
+              title={
+                <Space>
+                  <span>实时计分</span>
+                  {saveStatusText && <Text type="secondary">{saveStatusText}</Text>}
+                </Space>
+              }
+            >
               <Space size="large" wrap>
                 <Text>
                   价值观平均分：
@@ -620,9 +639,6 @@ export default function Evaluation() {
             <Space wrap>
               <Button onClick={handleClear} disabled={readonly || saving}>
                 清空重写
-              </Button>
-              <Button onClick={handleSaveDraft} loading={saving} disabled={readonly}>
-                暂存
               </Button>
               <Button type="primary" onClick={handleGenerate} loading={saving} disabled={readonly}>
                 生成结果
