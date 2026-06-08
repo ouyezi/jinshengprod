@@ -3,6 +3,7 @@ import {
   AutoComplete,
   Button,
   Card,
+  Collapse,
   Descriptions,
   Input,
   Modal,
@@ -10,6 +11,7 @@ import {
   Typography,
   message,
 } from 'antd'
+import dayjs from 'dayjs'
 import { searchEmployees } from '../../api/employees'
 import { DIMENSION_FIELDS, getStandard } from '../../api/standards'
 import {
@@ -23,7 +25,7 @@ import type { Employee } from '../../api/employees'
 import ScoreMatrix from '../../components/ScoreMatrix'
 import { calculateScores, suggestResult } from '../../utils/scoring'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 const EMPTY_SCORES: (number | null)[] = Array(12).fill(null)
 
@@ -132,7 +134,13 @@ export default function Evaluation() {
     }
     try {
       const results = await searchEmployees(text.trim())
-      setSearchOptions(results.map((r) => ({ value: r.name, label: r.name, id: r.id })))
+      setSearchOptions(
+        results.map((r) => ({
+          value: r.name,
+          label: `${r.name}（${r.employee_no}）`,
+          id: r.id,
+        })),
+      )
     } catch {
       setSearchOptions([])
     }
@@ -330,9 +338,6 @@ export default function Evaluation() {
     if (highlightDisadvantage && disadvantage.trim()) setHighlightDisadvantage(false)
   }, [disadvantage, highlightDisadvantage])
 
-  const showPerformance =
-    employee?.performance_history != null && employee.performance_history.trim() !== ''
-
   return (
     <div style={{ padding: 24, textAlign: 'left' }}>
       <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -375,16 +380,60 @@ export default function Evaluation() {
 
         {employee && (
           <Card size="small" title="员工信息" loading={loading}>
-            <Descriptions column={showPerformance ? 2 : 1} size="small">
+            <Descriptions column={2} size="small" title="组织信息">
+              <Descriptions.Item label="分管中心">
+                {employee.division_center ?? '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="一级部门">{employee.department ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="工号">{employee.employee_no}</Descriptions.Item>
+              <Descriptions.Item label="岗位">{employee.position ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="学历">{employee.education ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="入职时间">
+                {employee.join_date ? dayjs(employee.join_date).format('YYYY-MM-DD') : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+            <Descriptions column={2} size="small" title="晋升信息" style={{ marginTop: 16 }}>
               <Descriptions.Item label="晋升路径">
                 {employee.current_level} → {employee.target_level}
               </Descriptions.Item>
-              {showPerformance && (
-                <Descriptions.Item label="近两年绩效">
-                  {employee.performance_history}
-                </Descriptions.Item>
-              )}
+              <Descriptions.Item label="提名情况">
+                {employee.nomination_status ?? '-'}
+              </Descriptions.Item>
             </Descriptions>
+            {(employee.perf_fy24 || employee.perf_fy25 || employee.perf_fy25h1) && (
+              <Descriptions column={3} size="small" title="绩效" style={{ marginTop: 16 }}>
+                {employee.perf_fy24 && (
+                  <Descriptions.Item label="FY24">{employee.perf_fy24}</Descriptions.Item>
+                )}
+                {employee.perf_fy25 && (
+                  <Descriptions.Item label="FY25">{employee.perf_fy25}</Descriptions.Item>
+                )}
+                {employee.perf_fy25h1 && (
+                  <Descriptions.Item label="FY25H1">{employee.perf_fy25h1}</Descriptions.Item>
+                )}
+              </Descriptions>
+            )}
+            {employee.nomination_reason && (
+              <Collapse
+                style={{ marginTop: 16 }}
+                items={[
+                  {
+                    key: 'reason',
+                    label: '提名理由',
+                    children: (
+                      <Paragraph style={{ whiteSpace: 'pre-wrap' }}>
+                        {employee.nomination_reason}
+                      </Paragraph>
+                    ),
+                  },
+                ]}
+              />
+            )}
+            {employee.remark && (
+              <Descriptions column={1} size="small" style={{ marginTop: 16 }}>
+                <Descriptions.Item label="备注">{employee.remark}</Descriptions.Item>
+              </Descriptions>
+            )}
           </Card>
         )}
 
