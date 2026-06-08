@@ -30,6 +30,8 @@ const { Title, Text, Paragraph } = Typography
 
 const REVIEWER_NAME_KEY = 'review_reviewer_name'
 const EMPLOYEE_ID_KEY = 'review_employee_id'
+const DRAFT_STATUS = '待生成结果'
+const READY_SUBMIT_STATUS = '待提交'
 
 function readStoredReviewerName(): string {
   try {
@@ -79,6 +81,7 @@ function applyRecord(
     setDisadvantage: (v: string) => void
     setStatus: (s: string | null) => void
     setRecordId: (id: number | null) => void
+    setReviewerResult: (v: string | null) => void
   },
 ) {
   if (record) {
@@ -87,12 +90,14 @@ function applyRecord(
     setters.setDisadvantage(record.disadvantage ?? '')
     setters.setStatus(record.status)
     setters.setRecordId(record.id)
+    setters.setReviewerResult(record.reviewer_result ?? null)
   } else {
     setters.setScores([...EMPTY_SCORES])
     setters.setAdvantage('')
     setters.setDisadvantage('')
-    setters.setStatus('待提交')
+    setters.setStatus(DRAFT_STATUS)
     setters.setRecordId(null)
+    setters.setReviewerResult(null)
   }
 }
 
@@ -108,6 +113,7 @@ export default function Evaluation() {
   const [disadvantage, setDisadvantage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
   const [recordId, setRecordId] = useState<number | null>(null)
+  const [reviewerResult, setReviewerResult] = useState<string | null>(null)
   const [standards, setStandards] = useState<string[]>(Array(12).fill(''))
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -119,7 +125,8 @@ export default function Evaluation() {
   const restoredRef = useRef(false)
 
   const readonly = status === '已提交'
-  const canSubmit = status === '待确认' && !readonly
+  const canSubmit = status === READY_SUBMIT_STATUS && reviewerResult != null && !readonly
+  const needsRegenerate = status === READY_SUBMIT_STATUS && reviewerResult == null && !readonly
 
   const computed = useMemo(() => calculateScores(scores), [scores])
 
@@ -149,6 +156,7 @@ export default function Evaluation() {
           setDisadvantage,
           setStatus,
           setRecordId,
+          setReviewerResult,
         })
         setShowSubmittedHint(data.has_submitted && !data.record)
         persistReviewerName(name)
@@ -266,6 +274,7 @@ export default function Evaluation() {
       })
       setStatus(record.status)
       setRecordId(record.id)
+      setReviewerResult(record.reviewer_result ?? null)
       message.success('暂存成功')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '暂存失败')
@@ -307,6 +316,7 @@ export default function Evaluation() {
       setStatus(record.status)
       setRecordId(record.id)
       setScores([...record.scores])
+      setReviewerResult(record.reviewer_result ?? null)
       message.success('结果已生成，请确认后提交')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '生成结果失败')
@@ -323,34 +333,39 @@ export default function Evaluation() {
     if (finalScore === null) return
 
     const { sys, result } = suggestResult(finalScore)
-    void doGenerate(sys, result ?? '待确认')
+    if (finalScore > 2 && finalScore < 4) {
+      Modal.confirm({
+        title: '生成评审结果',
+        content: '总分未达绝对标准，请选择是否同意晋升。',
+        okText: '同意晋升',
+        cancelText: '不同意晋升',
+        closable: false,
+        maskClosable: false,
+        okButtonProps: { type: 'primary' },
+        onOk: () => {
+          void doGenerate(sys, '通过晋升')
+        },
+        onCancel: () => {
+          void doGenerate(sys, '不通过晋升')
+        },
+      })
+      return
+    }
+
+    if (!result) {
+      message.error('生成结果失败，请重试')
+      return
+    }
+    void doGenerate(sys, result)
   }
 
-  const submitFlow = async (reviewerResultOverride?: string) => {
-    if (!employee || !recordId) return
-
+  const submitFlow = async () => {
+    if (!recordId) return
     setSaving(true)
     try {
-      let id = recordId
-      const { finalScore } = calculateScores(scores)
-      if (finalScore !== null && reviewerResultOverride) {
-        const { sys } = suggestResult(finalScore)
-        const record = await generateResult({
-          employee_id: employee.id,
-          reviewer_name: reviewerName.trim(),
-          scores: scores as number[],
-          advantage: advantage.trim(),
-          disadvantage: disadvantage.trim(),
-          sys_suggestion: sys,
-          reviewer_result: reviewerResultOverride,
-        })
-        id = record.id
-        setRecordId(record.id)
-        setStatus(record.status)
-        setScores([...record.scores])
-      }
-      const record = await submitEvaluation(id)
+      const record = await submitEvaluation(recordId)
       setStatus(record.status)
+      setReviewerResult(record.reviewer_result ?? reviewerResult ?? null)
       message.success('提交成功')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '提交失败')
@@ -361,37 +376,18 @@ export default function Evaluation() {
 
   const handleSubmit = () => {
     if (!canSubmit || !recordId) {
-      message.warning('请先生成结果')
+      message.warning(needsRegenerate ? '请先重新生成评审结果' : '请先生成结果')
       return
     }
-
-    const { finalScore } = calculateScores(scores)
-    if (finalScore === null) return
-
-    if (finalScore > 2 && finalScore < 4) {
-      Modal.confirm({
-        title: '提交评审',
-        content: '总分未达绝对标准，请选择是否同意晋升。提交后数据将锁定不可修改。',
-        okText: '同意晋升',
-        cancelText: '不同意晋升',
-        closable: false,
-        maskClosable: false,
-        okButtonProps: { type: 'primary' },
-        onOk: () => submitFlow('通过晋升'),
-        onCancel: () => submitFlow('不通过晋升'),
-      })
-      return
-    }
-
-    const { result } = suggestResult(finalScore)
-    const verdict = result === '通过晋升' ? '同意晋升' : '不同意晋升'
 
     Modal.confirm({
       title: '提交评审',
-      content: `${verdict}，提交后不可修改，确定提交本次评审吗？`,
+      content: `晋升结果为「${reviewerResult ?? '-'}」，提交后不可修改，确定提交本次评审吗？`,
       okText: '确定提交',
       cancelText: '取消',
-      onOk: () => submitFlow(),
+      onOk: () => {
+        void submitFlow()
+      },
     })
   }
 
@@ -549,7 +545,27 @@ export default function Evaluation() {
                     {computed.finalScore ?? '—'}
                   </Text>
                 </Text>
+                <Text>
+                  晋升结果：
+                  <Text
+                    strong
+                    type={
+                      reviewerResult === '通过晋升'
+                        ? 'success'
+                        : reviewerResult === '不通过晋升'
+                          ? 'danger'
+                          : undefined
+                    }
+                  >
+                    {reviewerResult ?? '—'}
+                  </Text>
+                </Text>
               </Space>
+              {needsRegenerate && (
+                <div style={{ marginTop: 8 }}>
+                  <Text type="danger">当前结果缺失，请点击“生成结果”重新生成后再提交。</Text>
+                </div>
+              )}
             </Card>
 
             <Card size="small" title="评语">
