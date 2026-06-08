@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -37,16 +37,37 @@ DIMENSION_LABELS = [
 ]
 
 LEVELS = ["P5", "P6", "P7", "P8", "P9", "P10"]
+EMPLOYEE_LEVELS = ["P4", "P5", "P6", "P7", "P8", "P9", "P10"]
+
+
+def next_target_level(current_level: str) -> Optional[str]:
+    if current_level not in EMPLOYEE_LEVELS:
+        return None
+    idx = EMPLOYEE_LEVELS.index(current_level)
+    if idx >= len(EMPLOYEE_LEVELS) - 1:
+        return None
+    return EMPLOYEE_LEVELS[idx + 1]
 
 
 class UserInfo(Base):
     __tablename__ = "user_info"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_no: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    division_center: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    education: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    position: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     current_level: Mapped[str] = mapped_column(String(10), nullable=False)
     target_level: Mapped[str] = mapped_column(String(10), nullable=False)
-    performance_history: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    perf_fy24: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    perf_fy25: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    perf_fy25h1: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    join_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    nomination_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    nomination_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     update_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
