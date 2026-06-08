@@ -3,16 +3,32 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
 from app.database import get_db
-from app.models import UserInfo
+from app.models import EMPLOYEE_LEVELS, UserInfo
 from app.response import fail, ok
 from app.schemas import UserInfoCreate, UserInfoResponse, UserInfoUpdate
 from app.services.excel import build_template, import_employees
 
 router = APIRouter()
+
+
+def _validate_employee(
+    body: UserInfoCreate | UserInfoUpdate,
+    db: Session,
+    exclude_id: int | None = None,
+):
+    if body.current_level not in EMPLOYEE_LEVELS or body.target_level not in EMPLOYEE_LEVELS:
+        return fail("职级无效")
+    q = db.query(UserInfo).filter(UserInfo.employee_no == body.employee_no)
+    if exclude_id:
+        q = q.filter(UserInfo.id != exclude_id)
+    if q.first():
+        return fail("工号已存在")
+    return None
 
 
 @router.get("")
@@ -23,7 +39,7 @@ def list_employees(
 ):
     q = db.query(UserInfo)
     if name:
-        q = q.filter(UserInfo.name.contains(name))
+        q = q.filter(or_(UserInfo.name.contains(name), UserInfo.employee_no.contains(name)))
     items = q.order_by(UserInfo.update_time.desc()).all()
     return ok([UserInfoResponse.model_validate(i).model_dump() for i in items])
 
@@ -32,9 +48,9 @@ def list_employees(
 def search_employees(q: str = Query(""), db: Session = Depends(get_db)):
     query = db.query(UserInfo)
     if q:
-        query = query.filter(UserInfo.name.contains(q))
+        query = query.filter(or_(UserInfo.name.contains(q), UserInfo.employee_no.contains(q)))
     items = query.limit(20).all()
-    return ok([{"id": i.id, "name": i.name} for i in items])
+    return ok([{"id": i.id, "name": i.name, "employee_no": i.employee_no} for i in items])
 
 
 @router.get("/template")
@@ -79,6 +95,9 @@ def create_employee(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
+    err = _validate_employee(body, db)
+    if err:
+        return err
     now = datetime.utcnow()
     emp = UserInfo(**body.model_dump(), update_time=now)
     db.add(emp)
@@ -97,6 +116,9 @@ def update_employee(
     emp = db.get(UserInfo, employee_id)
     if not emp:
         return fail("员工不存在", status_code=404)
+    err = _validate_employee(body, db, exclude_id=employee_id)
+    if err:
+        return err
     for k, v in body.model_dump().items():
         setattr(emp, k, v)
     emp.update_time = datetime.utcnow()

@@ -5,6 +5,7 @@ import pytest
 from openpyxl import Workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.models import EMPLOYEE_LEVELS, UserInfo, next_target_level
@@ -33,7 +34,11 @@ def test_employee_levels_include_p4():
 
 @pytest.fixture
 def import_db():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -94,3 +99,32 @@ def test_import_p10_error(import_db):
     assert result["success"] == 0
     assert len(result["errors"]) == 1
     assert "无法" in result["errors"][0]["reason"]
+
+
+@pytest.fixture
+def admin_client(import_db):
+    from fastapi.testclient import TestClient
+
+    from app.auth import create_access_token
+    from app.database import get_db
+    from app.main import app
+
+    def override_get_db():
+        yield import_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+    token = create_access_token()
+    client.headers = {"Authorization": f"Bearer {token}"}
+    yield client
+    app.dependency_overrides.clear()
+
+
+def test_create_duplicate_employee_no(admin_client):
+    payload = {
+        "employee_no": "SH-1001", "name": "张三", "current_level": "P5", "target_level": "P6",
+    }
+    r1 = admin_client.post("/api/employees", json=payload)
+    assert r1.json()["code"] == 0
+    r2 = admin_client.post("/api/employees", json=payload)
+    assert r2.status_code == 400
