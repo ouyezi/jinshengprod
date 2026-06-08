@@ -96,7 +96,7 @@ class EvaluationRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     reviewer_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="待提交")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="待生成结果")
     score_1: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     score_2: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     score_3: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

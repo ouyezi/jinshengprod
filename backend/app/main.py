@@ -2,7 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine, SessionLocal
-from app.migrate import migrate_evaluation_record, migrate_user_info, migrate_user_info_pinyin
+from app.migrate import (
+    migrate_evaluation_record,
+    migrate_evaluation_status_labels,
+    migrate_user_info,
+    migrate_user_info_pinyin,
+)
 from app.seed import seed_standards
 from app.routers import auth, employees, standards, evaluations
 
@@ -26,6 +31,7 @@ app.include_router(evaluations.router, prefix="/api/evaluations", tags=["evaluat
 def on_startup():
     migrate_user_info()
     migrate_evaluation_record()
+    migrate_evaluation_status_labels()
     migrate_user_info_pinyin()
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

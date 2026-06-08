@@ -113,3 +113,25 @@ def migrate_user_info_pinyin() -> None:
         backfill_name_pinyin(db)
     finally:
         db.close()
+
+
+def migrate_evaluation_status_labels() -> None:
+    """旧 status 待提交/待确认 → 待生成结果/待提交。幂等：无旧「待确认」则跳过。"""
+    inspector = inspect(engine)
+    if "evaluation_record" not in inspector.get_table_names():
+        return
+
+    with engine.connect() as conn:
+        has_old_ready = conn.execute(
+            text("SELECT 1 FROM evaluation_record WHERE status = '待确认' LIMIT 1")
+        ).fetchone()
+    if not has_old_ready:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE evaluation_record SET status = '待生成结果' WHERE status = '待提交'")
+        )
+        conn.execute(
+            text("UPDATE evaluation_record SET status = '待提交' WHERE status = '待确认'")
+        )

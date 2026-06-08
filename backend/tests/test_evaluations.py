@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.migrate import migrate_evaluation_status_labels
 from app.models import UserInfo, EvaluationRecord
 from app.services.evaluation import (
     upsert_draft,
@@ -128,3 +129,36 @@ def test_load_api_has_submitted_flag(client, db):
     body = r.json()["data"]
     assert body["record"] is None
     assert body["has_submitted"] is True
+
+
+def test_migrate_evaluation_status_labels(db, engine, monkeypatch):
+    monkeypatch.setattr("app.migrate.engine", engine)
+
+    emp = db.query(UserInfo).first()
+    draft = EvaluationRecord(
+        employee_id=emp.id,
+        reviewer_name="迁移评委",
+        status="待提交",
+        create_time=datetime.utcnow(),
+        update_time=datetime.utcnow(),
+    )
+    ready = EvaluationRecord(
+        employee_id=emp.id,
+        reviewer_name="迁移评委2",
+        status="待确认",
+        final_score=4.0,
+        reviewer_result="通过晋升",
+        create_time=datetime.utcnow(),
+        update_time=datetime.utcnow(),
+    )
+    db.add_all([draft, ready])
+    db.commit()
+
+    migrate_evaluation_status_labels()
+
+    db.refresh(draft)
+    db.refresh(ready)
+    assert draft.status == "待生成结果"
+    assert ready.status == "待提交"
+    statuses = {r[0] for r in db.query(EvaluationRecord.status).distinct().all()}
+    assert "待确认" not in statuses
