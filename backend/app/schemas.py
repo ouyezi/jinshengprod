@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -16,10 +16,21 @@ class TokenResponse(BaseModel):
 
 
 class UserInfoBase(BaseModel):
+    employee_no: str
     name: str
+    division_center: Optional[str] = None
+    department: Optional[str] = None
+    education: Optional[str] = None
+    position: Optional[str] = None
     current_level: str
     target_level: str
-    performance_history: Optional[str] = None
+    perf_fy24: Optional[str] = None
+    perf_fy25: Optional[str] = None
+    perf_fy25h1: Optional[str] = None
+    join_date: Optional[date] = None
+    remark: Optional[str] = None
+    nomination_status: Optional[str] = None
+    nomination_reason: Optional[str] = None
 
 
 class UserInfoCreate(UserInfoBase):
