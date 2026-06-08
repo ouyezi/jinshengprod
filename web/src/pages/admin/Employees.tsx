@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input, Modal, Space, Table, Upload, message } from 'antd'
-import { DownloadOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons'
+import { DownloadOutlined, UploadOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import EmployeeForm from '../../components/EmployeeForm'
@@ -166,6 +166,16 @@ export default function Employees() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            setEditingEmployee(null)
+            setFormOpen(true)
+          }}
+        >
+          添加员工
+        </Button>
         <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
           下载模板
         </Button>
