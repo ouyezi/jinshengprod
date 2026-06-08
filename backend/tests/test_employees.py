@@ -7,8 +7,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.database import Base
-from app.models import EMPLOYEE_LEVELS, UserInfo, next_target_level
+from app.models import AdminAccount, EMPLOYEE_LEVELS, UserInfo, next_target_level
 from app.pinyin_util import name_to_pinyin_keys
 from app.services.excel import TEMPLATE_HEADERS, import_employees
 
@@ -118,12 +119,16 @@ def admin_client(import_db):
     from app.database import get_db
     from app.main import app
 
+    if import_db.query(AdminAccount).filter(AdminAccount.username == settings.admin_username).first() is None:
+        import_db.add(AdminAccount(username=settings.admin_username, password_hash="test-hash"))
+        import_db.commit()
+
     def override_get_db():
         yield import_db
 
     app.dependency_overrides[get_db] = override_get_db
     client = TestClient(app)
-    token = create_access_token()
+    token = create_access_token(settings.admin_username)
     client.headers = {"Authorization": f"Bearer {token}"}
     yield client
     app.dependency_overrides.clear()

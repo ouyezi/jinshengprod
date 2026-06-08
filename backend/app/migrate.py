@@ -1,12 +1,16 @@
 from datetime import datetime
 
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import SessionLocal, engine
 from app.models import AdminAccount, EvaluationRecord, UserInfo
 from app.services.employee import backfill_name_pinyin
+
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def migrate_user_info() -> None:
@@ -152,10 +156,9 @@ def migrate_admin_account() -> None:
         if db.query(AdminAccount).count() > 0:
             return
 
-        pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
         seeded_admin = AdminAccount(
             username=settings.admin_username,
-            password_hash=pwd_context.hash(settings.admin_password),
+            password_hash=_hash_password(settings.admin_password),
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
