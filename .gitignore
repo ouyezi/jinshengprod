@@ -19,3 +19,7 @@ dist/
 # Env
 .env
 .env.local
+
+# Runtime
+logs/
+.pids/

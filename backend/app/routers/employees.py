@@ -1,3 +1,4 @@
+from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -16,7 +17,7 @@ router = APIRouter()
 
 @router.get("")
 def list_employees(
-    name: str | None = Query(None),
+    name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):

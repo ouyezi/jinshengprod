@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -21,7 +22,7 @@ def create_access_token() -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def require_admin(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> str:
+def require_admin(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> str:
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin authentication required")
     try:

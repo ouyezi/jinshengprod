@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -9,16 +11,16 @@ ACTIVE_STATUSES = ("待提交", "待确认")
 LOCKED_STATUS = "已提交"
 
 
-def _scores_from_record(rec: EvaluationRecord) -> list[int | None]:
+def _scores_from_record(rec: EvaluationRecord) -> list[Optional[int]]:
     return [getattr(rec, f"score_{i}") for i in range(1, 13)]
 
 
-def _apply_scores(rec: EvaluationRecord, scores: list[int | None]) -> None:
+def _apply_scores(rec: EvaluationRecord, scores: list[Optional[int]]) -> None:
     for i, s in enumerate(scores, start=1):
         setattr(rec, f"score_{i}", s)
 
 
-def record_to_dict(rec: EvaluationRecord, employee: UserInfo | None = None) -> dict:
+def record_to_dict(rec: EvaluationRecord, employee: Optional[UserInfo] = None) -> dict:
     return {
         "id": rec.id,
         "employee_id": rec.employee_id,
@@ -40,7 +42,7 @@ def record_to_dict(rec: EvaluationRecord, employee: UserInfo | None = None) -> d
     }
 
 
-def load_evaluation(db: Session, employee_id: int, reviewer_name: str) -> EvaluationRecord | None:
+def load_evaluation(db: Session, employee_id: int, reviewer_name: str) -> Optional[EvaluationRecord]:
     rec = (
         db.query(EvaluationRecord)
         .filter(
@@ -57,9 +59,9 @@ def upsert_draft(
     db: Session,
     employee_id: int,
     reviewer_name: str,
-    scores: list[int | None],
-    advantage: str | None = None,
-    disadvantage: str | None = None,
+    scores: list[Optional[int]],
+    advantage: Optional[str] = None,
+    disadvantage: Optional[str] = None,
 ) -> EvaluationRecord:
     rec = (
         db.query(EvaluationRecord)
@@ -155,7 +157,7 @@ def submit_record(db: Session, record_id: int) -> EvaluationRecord:
     return rec
 
 
-def query_summary(db: Session, employee_name: str | None, reviewer_name: str | None) -> list[dict]:
+def query_summary(db: Session, employee_name: Optional[str], reviewer_name: Optional[str]) -> list[dict]:
     q = db.query(EvaluationRecord, UserInfo).outerjoin(UserInfo, UserInfo.id == EvaluationRecord.employee_id)
     if employee_name:
         q = q.filter(UserInfo.name.contains(employee_name))

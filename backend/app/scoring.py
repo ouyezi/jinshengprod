@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 from decimal import Decimal, ROUND_HALF_UP
 
 
@@ -5,7 +7,7 @@ def round_score(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def calculate_scores(scores: list[int | None]) -> dict[str, float | None]:
+def calculate_scores(scores: list[Optional[int]]) -> dict[str, Optional[float]]:
     if any(s is None for s in scores):
         return {
             "avg_values": None,
@@ -27,7 +29,7 @@ def calculate_scores(scores: list[int | None]) -> dict[str, float | None]:
     }
 
 
-def suggest_result(final_score: float) -> tuple[str, str | None]:
+def suggest_result(final_score: float) -> tuple[str, Optional[str]]:
     if final_score <= 2:
         return ("不通过", "不通过晋升")
     if final_score >= 4:
