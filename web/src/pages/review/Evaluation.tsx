@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   AutoComplete,
@@ -28,6 +28,47 @@ import { calculateScores, suggestResult } from '../../utils/scoring'
 
 const { Title, Text, Paragraph } = Typography
 
+const REVIEWER_NAME_KEY = 'review_reviewer_name'
+const EMPLOYEE_ID_KEY = 'review_employee_id'
+
+function readStoredReviewerName(): string {
+  try {
+    return localStorage.getItem(REVIEWER_NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function readStoredEmployeeId(): number | null {
+  try {
+    const raw = localStorage.getItem(EMPLOYEE_ID_KEY)
+    if (!raw) return null
+    const id = parseInt(raw, 10)
+    return Number.isNaN(id) ? null : id
+  } catch {
+    return null
+  }
+}
+
+function persistReviewerName(name: string) {
+  try {
+    const trimmed = name.trim()
+    if (trimmed) localStorage.setItem(REVIEWER_NAME_KEY, trimmed)
+    else localStorage.removeItem(REVIEWER_NAME_KEY)
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+function persistEmployeeId(employeeId: number | null) {
+  try {
+    if (employeeId) localStorage.setItem(EMPLOYEE_ID_KEY, String(employeeId))
+    else localStorage.removeItem(EMPLOYEE_ID_KEY)
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 const EMPTY_SCORES: (number | null)[] = Array(12).fill(null)
 
 function applyRecord(
@@ -56,7 +97,7 @@ function applyRecord(
 }
 
 export default function Evaluation() {
-  const [reviewerName, setReviewerName] = useState('')
+  const [reviewerName, setReviewerName] = useState(readStoredReviewerName)
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [searchOptions, setSearchOptions] = useState<{ value: string; label: string; id: number }[]>(
@@ -75,6 +116,7 @@ export default function Evaluation() {
   const [highlightDisadvantage, setHighlightDisadvantage] = useState(false)
   const [pendingEmployeeId, setPendingEmployeeId] = useState<number | null>(null)
   const [showSubmittedHint, setShowSubmittedHint] = useState(false)
+  const restoredRef = useRef(false)
 
   const readonly = status === '已提交'
   const canSubmit = status === '待确认' && !readonly
@@ -109,6 +151,8 @@ export default function Evaluation() {
           setRecordId,
         })
         setShowSubmittedHint(data.has_submitted && !data.record)
+        persistReviewerName(name)
+        persistEmployeeId(data.employee.id)
         await fetchStandards(data.employee.target_level)
       } catch (err) {
         message.error(err instanceof Error ? err.message : '加载评审数据失败')
@@ -119,8 +163,19 @@ export default function Evaluation() {
     [fetchStandards],
   )
 
+  useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
+    const name = readStoredReviewerName()
+    const employeeId = readStoredEmployeeId()
+    if (name && employeeId) {
+      loadDraft(employeeId, name)
+    }
+  }, [loadDraft])
+
   const handleReviewerBlur = () => {
     const name = reviewerName.trim()
+    persistReviewerName(name)
     if (!name) return
     const id = employee?.id ?? pendingEmployeeId
     if (id) {
@@ -192,6 +247,7 @@ export default function Evaluation() {
         setHighlightAdvantage(false)
         setHighlightDisadvantage(false)
         setShowSubmittedHint(false)
+        persistEmployeeId(null)
       },
     })
   }
@@ -267,35 +323,39 @@ export default function Evaluation() {
     if (finalScore === null) return
 
     const { sys, result } = suggestResult(finalScore)
+    void doGenerate(sys, result ?? '待确认')
+  }
 
-    if (finalScore <= 2) {
-      Modal.confirm({
-        title: '生成结果',
-        content: '系统建议不予通过，是否确认？',
-        okText: '确认',
-        cancelText: '取消',
-        onOk: () => doGenerate(sys, result!),
-      })
-    } else if (finalScore >= 4) {
-      Modal.confirm({
-        title: '生成结果',
-        content: '系统建议晋升通过，是否确认？',
-        okText: '确认',
-        cancelText: '取消',
-        onOk: () => doGenerate(sys, result!),
-      })
-    } else {
-      Modal.confirm({
-        title: '生成结果',
-        content: '总分未达绝对标准，请评委自行选择',
-        okText: '同意晋升',
-        cancelText: '不同意晋升',
-        closable: false,
-        maskClosable: false,
-        okButtonProps: { type: 'primary' },
-        onOk: () => doGenerate(sys, '通过晋升'),
-        onCancel: () => doGenerate(sys, '不通过晋升'),
-      })
+  const submitFlow = async (reviewerResultOverride?: string) => {
+    if (!employee || !recordId) return
+
+    setSaving(true)
+    try {
+      let id = recordId
+      const { finalScore } = calculateScores(scores)
+      if (finalScore !== null && reviewerResultOverride) {
+        const { sys } = suggestResult(finalScore)
+        const record = await generateResult({
+          employee_id: employee.id,
+          reviewer_name: reviewerName.trim(),
+          scores: scores as number[],
+          advantage: advantage.trim(),
+          disadvantage: disadvantage.trim(),
+          sys_suggestion: sys,
+          reviewer_result: reviewerResultOverride,
+        })
+        id = record.id
+        setRecordId(record.id)
+        setStatus(record.status)
+        setScores([...record.scores])
+      }
+      const record = await submitEvaluation(id)
+      setStatus(record.status)
+      message.success('提交成功')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '提交失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -305,23 +365,33 @@ export default function Evaluation() {
       return
     }
 
+    const { finalScore } = calculateScores(scores)
+    if (finalScore === null) return
+
+    if (finalScore > 2 && finalScore < 4) {
+      Modal.confirm({
+        title: '提交评审',
+        content: '总分未达绝对标准，请选择是否同意晋升。提交后数据将锁定不可修改。',
+        okText: '同意晋升',
+        cancelText: '不同意晋升',
+        closable: false,
+        maskClosable: false,
+        okButtonProps: { type: 'primary' },
+        onOk: () => submitFlow('通过晋升'),
+        onCancel: () => submitFlow('不通过晋升'),
+      })
+      return
+    }
+
+    const { result } = suggestResult(finalScore)
+    const verdict = result === '通过晋升' ? '同意晋升' : '不同意晋升'
+
     Modal.confirm({
       title: '提交评审',
-      content: '提交后数据将锁定不可修改，确定提交本次评审吗？',
+      content: `${verdict}，提交后不可修改，确定提交本次评审吗？`,
       okText: '确定提交',
       cancelText: '取消',
-      onOk: async () => {
-        setSaving(true)
-        try {
-          const record = await submitEvaluation(recordId)
-          setStatus(record.status)
-          message.success('提交成功')
-        } catch (err) {
-          message.error(err instanceof Error ? err.message : '提交失败')
-        } finally {
-          setSaving(false)
-        }
-      },
+      onOk: () => submitFlow(),
     })
   }
 
@@ -370,7 +440,7 @@ export default function Evaluation() {
               </Text>
               <AutoComplete
                 style={{ width: 240, display: 'block', marginTop: 4 }}
-                placeholder="搜索并选择员工"
+                placeholder="搜索姓名、工号或拼音"
                 value={employeeSearch}
                 disabled={readonly}
                 options={searchOptions}

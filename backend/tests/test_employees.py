@@ -9,7 +9,13 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.models import EMPLOYEE_LEVELS, UserInfo, next_target_level
+from app.pinyin_util import name_to_pinyin_keys
 from app.services.excel import TEMPLATE_HEADERS, import_employees
+
+
+def test_name_to_pinyin_keys():
+    assert "zhangsan" in name_to_pinyin_keys("张三")
+    assert "zs" in name_to_pinyin_keys("张三")
 
 
 def test_next_target_level_normal():
@@ -71,6 +77,9 @@ def test_import_new_employee(import_db):
     assert emp.target_level == "P5"
     assert emp.perf_fy24 == "A"
     assert emp.nomination_reason == "业绩优秀"
+    assert emp.name_pinyin is not None
+    assert "wuyan" in emp.name_pinyin
+    assert "wy" in emp.name_pinyin
 
 
 def test_import_upsert_by_employee_no(import_db):
@@ -128,3 +137,42 @@ def test_create_duplicate_employee_no(admin_client):
     assert r1.json()["code"] == 0
     r2 = admin_client.post("/api/employees", json=payload)
     assert r2.status_code == 400
+
+
+@pytest.fixture
+def search_client(import_db):
+    from fastapi.testclient import TestClient
+
+    from app.database import get_db
+    from app.main import app
+
+    def override_get_db():
+        yield import_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+def test_search_employees_by_pinyin(search_client, import_db):
+    import_db.add(
+        UserInfo(
+            employee_no="SH-2001",
+            name="李明",
+            name_pinyin=name_to_pinyin_keys("李明"),
+            current_level="P5",
+            target_level="P6",
+            update_time=datetime.utcnow(),
+        )
+    )
+    import_db.commit()
+
+    r = search_client.get("/api/employees/search", params={"q": "liming"})
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert len(data) == 1
+    assert data[0]["name"] == "李明"
+
+    r2 = search_client.get("/api/employees/search", params={"q": "lm"})
+    assert r2.json()["data"][0]["name"] == "李明"

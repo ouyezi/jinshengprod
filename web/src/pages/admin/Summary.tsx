@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Form, Input, Space, Table, Tag, message } from 'antd'
+import { Button, Form, Input, Select, Space, Table, Tag, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -66,8 +66,22 @@ function groupKey(row: SummaryRow) {
   return `${row.评审对象姓名}::${row.评委姓名}`
 }
 
+const STATUS_OPTIONS = [
+  { label: '待提交', value: '待提交' },
+  { label: '待确认', value: '待确认' },
+  { label: '已提交', value: '已提交' },
+]
+
+const PASS_OPTIONS = [
+  { label: '通过晋升', value: '通过晋升' },
+  { label: '不通过晋升', value: '不通过晋升' },
+  { label: '待确认', value: '待确认' },
+]
+
+interface SummaryFormValues extends SummaryParams {}
+
 export default function Summary() {
-  const [form] = Form.useForm<SummaryParams>()
+  const [form] = Form.useForm<SummaryFormValues>()
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -137,6 +151,8 @@ export default function Summary() {
     const params: SummaryParams = {
       employee_name: values.employee_name?.trim() || undefined,
       reviewer_name: values.reviewer_name?.trim() || undefined,
+      status: values.status || undefined,
+      reviewer_result: values.reviewer_result || undefined,
     }
     setQueryParams(params)
     await fetchSummary(params)
@@ -172,6 +188,22 @@ export default function Summary() {
         </Form.Item>
         <Form.Item name="reviewer_name" label="评委姓名">
           <Input placeholder="请输入评委姓名" allowClear style={{ width: 180 }} />
+        </Form.Item>
+        <Form.Item name="status" label="状态">
+          <Select
+            allowClear
+            placeholder="全部"
+            options={STATUS_OPTIONS}
+            style={{ width: 120 }}
+          />
+        </Form.Item>
+        <Form.Item name="reviewer_result" label="是否通过">
+          <Select
+            allowClear
+            placeholder="全部"
+            options={PASS_OPTIONS}
+            style={{ width: 140 }}
+          />
         </Form.Item>
         <Form.Item>
           <Space>

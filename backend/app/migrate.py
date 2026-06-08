@@ -1,7 +1,8 @@
 from sqlalchemy import inspect, text
 
-from app.database import engine
+from app.database import SessionLocal, engine
 from app.models import EvaluationRecord, UserInfo
+from app.services.employee import backfill_name_pinyin
 
 
 def migrate_user_info() -> None:
@@ -87,3 +88,28 @@ def migrate_evaluation_record() -> None:
                 "ON evaluation_record (reviewer_name)"
             )
         )
+
+
+def migrate_user_info_pinyin() -> None:
+    """为 user_info 增加 name_pinyin 列并回填。"""
+    inspector = inspect(engine)
+    if "user_info" not in inspector.get_table_names():
+        return
+
+    columns = {c["name"] for c in inspector.get_columns("user_info")}
+    if "name_pinyin" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user_info ADD COLUMN name_pinyin VARCHAR(100)"))
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_info_name_pinyin "
+                    "ON user_info (name_pinyin)"
+                )
+            )
+
+    db = SessionLocal()
+    try:
+        backfill_name_pinyin(db)
+    finally:
+        db.close()

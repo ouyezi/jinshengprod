@@ -69,6 +69,8 @@ export async function submitEvaluation(recordId: number): Promise<EvaluationReco
 export interface SummaryParams {
   employee_name?: string
   reviewer_name?: string
+  status?: string
+  reviewer_result?: string
 }
 
 export interface SummaryRow {
@@ -110,6 +112,8 @@ export async function exportSummary(params: SummaryParams): Promise<void> {
   const searchParams = new URLSearchParams()
   if (params.employee_name) searchParams.set('employee_name', params.employee_name)
   if (params.reviewer_name) searchParams.set('reviewer_name', params.reviewer_name)
+  if (params.status) searchParams.set('status', params.status)
+  if (params.reviewer_result) searchParams.set('reviewer_result', params.reviewer_result)
   const qs = searchParams.toString()
   const url = `/api/evaluations/export${qs ? `?${qs}` : ''}`
   const res = await axios.get(url, {

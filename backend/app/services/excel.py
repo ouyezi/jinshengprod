@@ -6,6 +6,7 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.models import EMPLOYEE_LEVELS, UserInfo, next_target_level
+from app.pinyin_util import name_to_pinyin_keys
 
 TEMPLATE_HEADERS = [
     "分管中心", "一级部门", "工号", "姓名", "学历", "岗位", "职级",
@@ -83,6 +84,7 @@ def import_employees(db: Session, file_bytes: bytes) -> dict:
         fields = {
             "employee_no": employee_no,
             "name": name,
+            "name_pinyin": name_to_pinyin_keys(name),
             "division_center": _cell_str(row[0] if len(row) > 0 else None),
             "department": _cell_str(row[1] if len(row) > 1 else None),
             "education": _cell_str(row[4] if len(row) > 4 else None),

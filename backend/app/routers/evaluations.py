@@ -94,20 +94,24 @@ def submit(body: EvaluationSubmitRequest, db: Session = Depends(get_db)):
 def summary(
     employee_name: Optional[str] = Query(None),
     reviewer_name: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    reviewer_result: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    return ok(query_summary(db, employee_name, reviewer_name))
+    return ok(query_summary(db, employee_name, reviewer_name, status, reviewer_result))
 
 
 @router.get("/export")
 def export(
     employee_name: Optional[str] = Query(None),
     reviewer_name: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    reviewer_result: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _: str = Depends(require_admin),
 ):
-    rows = query_summary(db, employee_name, reviewer_name)
+    rows = query_summary(db, employee_name, reviewer_name, status, reviewer_result)
     content = build_summary_export(rows)
     return Response(
         content=content,

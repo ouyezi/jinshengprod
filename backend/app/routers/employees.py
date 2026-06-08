@@ -1,17 +1,18 @@
-from typing import Optional
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
 from app.database import get_db
 from app.models import EMPLOYEE_LEVELS, UserInfo
+from app.pinyin_util import name_to_pinyin_keys
 from app.response import fail, ok
 from app.schemas import UserInfoCreate, UserInfoResponse, UserInfoUpdate
+from app.services.employee import filter_employees_by_keyword
 from app.services.excel import build_template, import_employees
+
+from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ def list_employees(
 ):
     q = db.query(UserInfo)
     if name:
-        q = q.filter(or_(UserInfo.name.contains(name), UserInfo.employee_no.contains(name)))
+        q = filter_employees_by_keyword(q, name)
     items = q.order_by(UserInfo.update_time.desc()).all()
     return ok([UserInfoResponse.model_validate(i).model_dump() for i in items])
 
@@ -47,8 +48,7 @@ def list_employees(
 @router.get("/search")
 def search_employees(q: str = Query(""), db: Session = Depends(get_db)):
     query = db.query(UserInfo)
-    if q:
-        query = query.filter(or_(UserInfo.name.contains(q), UserInfo.employee_no.contains(q)))
+    query = filter_employees_by_keyword(query, q)
     items = query.limit(20).all()
     return ok([{"id": i.id, "name": i.name, "employee_no": i.employee_no} for i in items])
 
@@ -99,7 +99,9 @@ def create_employee(
     if err:
         return err
     now = datetime.utcnow()
-    emp = UserInfo(**body.model_dump(), update_time=now)
+    data = body.model_dump()
+    data["name_pinyin"] = name_to_pinyin_keys(body.name)
+    emp = UserInfo(**data, update_time=now)
     db.add(emp)
     db.commit()
     db.refresh(emp)
@@ -121,6 +123,7 @@ def update_employee(
         return err
     for k, v in body.model_dump().items():
         setattr(emp, k, v)
+    emp.name_pinyin = name_to_pinyin_keys(body.name)
     emp.update_time = datetime.utcnow()
     db.commit()
     return ok(UserInfoResponse.model_validate(emp).model_dump())

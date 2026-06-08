@@ -158,12 +158,22 @@ def submit_record(db: Session, record_id: int) -> EvaluationRecord:
     return rec
 
 
-def query_summary(db: Session, employee_name: Optional[str], reviewer_name: Optional[str]) -> list[dict]:
+def query_summary(
+    db: Session,
+    employee_name: Optional[str],
+    reviewer_name: Optional[str],
+    status: Optional[str] = None,
+    reviewer_result: Optional[str] = None,
+) -> list[dict]:
     q = db.query(EvaluationRecord, UserInfo).outerjoin(UserInfo, UserInfo.id == EvaluationRecord.employee_id)
     if employee_name:
         q = q.filter(UserInfo.name.contains(employee_name))
     if reviewer_name:
         q = q.filter(EvaluationRecord.reviewer_name.contains(reviewer_name))
+    if status:
+        q = q.filter(EvaluationRecord.status == status)
+    if reviewer_result:
+        q = q.filter(EvaluationRecord.reviewer_result == reviewer_result)
 
     rows = []
     for rec, emp in q.order_by(EvaluationRecord.update_time.desc()).all():

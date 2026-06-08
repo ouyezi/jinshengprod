@@ -55,6 +55,7 @@ class UserInfo(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     employee_no: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    name_pinyin: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     division_center: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     education: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
