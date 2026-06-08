@@ -2,7 +2,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | V1.0 |
+| 版本 | V1.1 |
 | 日期 | 2026-06-08 |
 | 状态 | 待实施 |
 | 关联 | `2026-06-08-evaluation-resubmit-design.md`、`2026-06-08-promotion-review-design.md` |
@@ -11,28 +11,64 @@
 
 ## 1. 概述
 
-优化评委端评审流程（晋升判定前移、自动暂存）及管理端密码自助修改能力。
+优化评委端评审流程（晋升判定前移、自动暂存、状态命名澄清）及管理端密码自助修改能力。
 
 ### 1.1 需求摘要
 
 | # | 需求 | 决策 |
 |---|------|------|
 | 1 | 生成结果时完成晋升判定，实时计分行展示；提交仅确认；2–4 分可重新生成改选 | 2–4 分在生成时弹窗选择（方案 A） |
-| 2 | 打分过程自动暂存，去掉「暂存」按钮 | 防抖 + 切换/离开兜底（方案 C）；`待确认` 不暂停 |
+| 2 | 打分过程自动暂存，去掉「暂存」按钮 | 防抖 + 切换/离开兜底（方案 C）；`待提交` 状态不暂停 |
 | 3 | 管理员可修改密码 | 写入数据库 `admin_account` 表（方案 A）；改密后强制重新登录 |
 
-### 1.2 方案选择（已否决项）
+### 1.2 状态重命名（V1.1）
+
+原命名易混淆，本次统一重命名 `evaluation_record.status`：
+
+| 旧值 | 新值 | 含义 |
+|------|------|------|
+| `待提交` | **`待生成结果`** | 打分/草稿中，尚未生成晋升结果 |
+| `待确认` | **`待提交`** | **已生成结果**，等待评委最终提交 |
+| `已提交` | `已提交` | 不变，已锁定 |
+
+**数据迁移**（`migrate_evaluation_status_labels()`，startup 执行）：
+
+```sql
+UPDATE evaluation_record SET status = '待生成结果' WHERE status = '待提交';
+UPDATE evaluation_record SET status = '待提交'      WHERE status = '待确认';
+```
+
+注意：必须先更新旧 `待提交` → `待生成结果`，再更新旧 `待确认` → `待提交`，避免两步互相覆盖。
+
+**代码常量**：
+
+```python
+DRAFT_STATUS = "待生成结果"      # 原 待提交
+READY_SUBMIT_STATUS = "待提交"    # 原 待确认
+LOCKED_STATUS = "已提交"
+ACTIVE_STATUSES = (DRAFT_STATUS, READY_SUBMIT_STATUS)
+```
+
+**前端**：
+
+- `canSubmit = status === '待提交' && reviewerResult != null && !readonly`
+- 状态展示文案与 DB 值一致，不再使用旧名
+
+**管理端汇总页**筛选选项同步改为：`待生成结果` / `待提交` / `已提交`。
+
+### 1.3 方案选择（已否决项）
 
 | 领域 | 否决方案 | 原因 |
 |------|----------|------|
 | 晋升判定 | 提交时弹窗选择 | 与需求「生成时判定」冲突 |
-| 自动暂存 | `待确认` 时暂停 | 用户明确要求不暂停 |
+| 自动暂存 | `待提交` 时暂停 | 用户明确要求不暂停 |
+| 自动暂存 | 改分后退回 `待生成结果` | 用户选择方案 B：保持 `待提交`，清空结果并禁用提交 |
 | 自动暂存 | 仅 localStorage | 换设备/清缓存丢数据 |
 | 改密码 | 写 `.env` 文件 | 容器部署不友好，需重启 |
 
 ---
 
-## 2. 评委端 — 晋升判定时机（§1）
+## 2. 评委端 — 晋升判定时机
 
 ### 2.1 生成结果行为
 
@@ -42,7 +78,7 @@
 | ≥ 4 | 直接调用 `generateResult`，`reviewer_result = 通过晋升`，无弹窗 |
 | 2 < 总分 < 4 | 弹窗「同意晋升 / 不同意晋升」，选择后生成并写入 `reviewer_result` |
 
-弹窗规格（与现提交弹窗类似，文案调整）：
+弹窗规格：
 
 - `title`: 生成评审结果
 - `content`: 总分未达绝对标准，请选择是否同意晋升。
@@ -50,15 +86,17 @@
 - `cancelText`: 不同意晋升 → `reviewer_result = 不通过晋升`
 - `closable: false`, `maskClosable: false`
 
+生成成功后：`status = 待提交`（已生成、可提交）。
+
 ### 2.2 再次生成（2–4 分改选）
 
-状态为 `待确认` 或 `待提交` 且当前总分仍在 (2, 4) 时，再次点击「生成结果」：
+`status ∈ {待生成结果, 待提交}` 且总分仍在 (2, 4) 时，再次点击「生成结果」：
 
-1. 校验分数与评语完整（与现逻辑一致）
+1. 校验分数与评语完整
 2. 再次弹出 §2.1 选择弹窗
-3. 覆盖活跃记录的 `reviewer_result` 及计分字段，状态设为 `待确认`
+3. 覆盖活跃记录的 `reviewer_result` 及计分字段，`status = 待提交`
 
-≤2 / ≥4 再次生成：按新分数重新自动判定，无弹窗。
+≤2 / ≥4 再次生成：按新分数自动判定，无弹窗。
 
 ### 2.3 提交行为
 
@@ -66,11 +104,13 @@
 
 | 场景 | 弹窗内容 |
 |------|----------|
-| 任意已生成记录 | `当前判定：{reviewer_result}。提交后不可修改，确定提交吗？` |
+| 有 `reviewer_result` | `当前判定：{reviewer_result}。提交后不可修改，确定提交吗？` |
 | `okText` | 确定提交 |
 | `cancelText` | 取消 |
 
-`submitFlow` 不再接受 `reviewerResultOverride` 参数；直接 `submitEvaluation(recordId)`。
+`submitFlow` 不再接受 `reviewerResultOverride`；直接 `submitEvaluation(recordId)`。
+
+**提交前置条件**：`status === '待提交'` 且 `reviewer_result` 非空（改分后结果清空时，提交按钮 disabled）。
 
 ### 2.4 实时计分行 UI
 
@@ -82,16 +122,14 @@
 
 | 时机 | 显示 |
 |------|------|
-| 无 `reviewer_result`（含 `待提交`、改分后退回） | `—` |
-| `待确认` 或 `已提交` | 显示 `reviewer_result`；`通过晋升` 用 `type="success"`，`不通过晋升` 用 `type="danger"` |
-
-`reviewer_result` 来源：后端 `record.reviewer_result`（`load` / `generate` / `saveDraft` 响应），前端本地 state 与之一致。
+| 无 `reviewer_result`（`待生成结果`，或 `待提交` 但改分后结果已清空） | `—` |
+| `待提交` 且有 `reviewer_result`，或 `已提交` | 显示结果；通过 `type="success"`，不通过 `type="danger"` |
 
 ### 2.5 状态机
 
 ```
-待提交 ←─自动暂存─ 打分中
-待提交 ─生成结果→ 待确认 ─提交→ 已提交
+待生成结果 ←─自动暂存─ 打分中
+待生成结果 ─生成结果→ 待提交 ─提交→ 已提交
 ```
 
 生成结果规则说明文案保留，位置不变。
@@ -102,12 +140,12 @@
 |------|------|
 | 暂存 | **移除** |
 | 生成结果 | 逻辑按 §2.1–2.2 |
-| 提交 | 逻辑按 §2.3 |
+| 提交 | `待提交` 且有 `reviewer_result` 时可点；逻辑按 §2.3 |
 | 清空重写 | 不变 |
 
 ---
 
-## 3. 评委端 — 自动暂存（§2）
+## 3. 评委端 — 自动暂存
 
 ### 3.1 接口
 
@@ -117,14 +155,12 @@
 
 | 触发 | 行为 |
 |------|------|
-| **防抖保存** | 修改 12 项分数、突出优势、待发展项后，停止输入 **1.5 秒** 调用 `saveDraft` |
+| **防抖保存** | 修改分数或评语后，停止输入 **1.5 秒** 调用 `saveDraft` |
 | **切换员工** | 切换前先保存当前员工草稿，再 `load` 新员工 |
 | **评委姓名 blur** | 已选员工时立即保存 |
-| **离开页面** | `beforeunload` 时有未决保存则 `fetch` + `keepalive: true` 兜底（与防抖 pending 合并） |
+| **离开页面** | `beforeunload` 时 `fetch` + `keepalive: true` 兜底 |
 
 ### 3.3 保存条件
-
-同时满足才保存：
 
 - `reviewer_name` 非空
 - 已选中 `employee`
@@ -138,30 +174,44 @@
 |----|------|
 | 成功 | 不弹 `message.success` |
 | 失败 | `message.error` |
-| 状态指示 | 实时计分 Card 标题旁：`保存中…` / `已保存`（3 秒后淡出）/ 默认空白 |
+| 状态指示 | 实时计分 Card 标题旁：`保存中…` / `已保存`（3 秒后淡出） |
 
-### 3.5 `待确认` 时自动暂存（后端逻辑变更）
+### 3.5 自动暂存与状态（方案 B）
 
-**不暂停**自动暂存。`upsert_draft` 按变更类型分支：
+**`待提交` 状态不暂停**自动暂存。`upsert_draft` 按当前 `status` 与变更类型分支：
+
+#### A. 当前 `status = 待生成结果`
 
 | 变更 | 行为 |
 |------|------|
-| 仅 `advantage` / `disadvantage` | 更新字段；**保持 `status = 待确认`**；保留 `reviewer_result` 及计分汇总字段 |
-| 任意 `score_*` 变动 | 更新分数；**`status → 待提交`**；清空 `avg_values`、`avg_capability`、`avg_output`、`final_score`、`sys_suggestion`、`reviewer_result` |
+| 任意字段 | 更新字段；**保持 `待生成结果`** |
 
-判定「分数是否变动」：与库中当前 `score_1..score_12` 逐位比较（含 `null`）。
+#### B. 当前 `status = 待提交`（已生成过结果）
 
-前端同步：分数变动导致 draft 响应 `status = 待提交` 且无 `reviewer_result` 时，清空本地晋升结果展示。
+| 变更 | 行为 |
+|------|------|
+| 仅 `advantage` / `disadvantage` | 更新字段；**保持 `待提交`**；保留 `reviewer_result` 及计分汇总 |
+| 任意 `score_*` 变动 | 更新分数；**保持 `待提交`**；清空 `avg_values`、`avg_capability`、`avg_output`、`final_score`、`sys_suggestion`、`reviewer_result` |
+
+判定「分数是否变动」：与库中 `score_1..score_12` 逐位比较（含 `null`）。
+
+**改分后的 UX**：
+
+- 状态仍显示 `待提交`，但晋升结果为 `—`
+- 「提交」按钮 **disabled**
+- 提示（`Text type="warning"`）：`分数已变更，请重新生成结果后再提交`
+- 重新「生成结果」后恢复 `reviewer_result`，提交按钮重新启用
 
 ### 3.6 实现要点（前端）
 
-- 使用 `useRef` 记录上次已保存 payload 快照，避免无变化重复请求
-- 防抖 timer 在 unmount / 切换员工前 `flush`（立即保存）
-- `readonly` 时不注册防抖、不触发保存
+- `useRef` 记录上次已保存 payload，避免无变化重复请求
+- 防抖 timer 在 unmount / 切换员工前 `flush`
+- `readonly` 时不保存
+- 本地维护 `reviewerResult` state，与 `canSubmit` 联动
 
 ---
 
-## 4. 管理端 — 修改密码（§3）
+## 4. 管理端 — 修改密码
 
 ### 4.1 数据模型
 
@@ -179,18 +229,15 @@
 `migrate_admin_account()` 在 startup 调用：
 
 - 表不存在 → 创建
-- 表为空 → 插入一条：`username = settings.admin_username`，`password_hash = bcrypt(settings.admin_password)`
+- 表为空 → 从 `settings.admin_username` / `settings.admin_password` 种子一条 bcrypt 记录
 
-之后登录**仅以 DB 为准**；`settings.admin_*` 仅作首次种子，运行时改 env 不影响已存在记录。
+之后登录仅以 DB 为准。
 
 ### 4.3 认证改造
 
-| 函数 | 变更 |
-|------|------|
-| `authenticate_admin` | 查 `admin_account`，`bcrypt.verify(plain, hash)` |
-| `create_access_token` | `sub` = DB `username` |
-
-依赖：`passlib[bcrypt]` 或等价 bcrypt 库（写入 `requirements.txt`）。
+- `authenticate_admin`：查 DB + bcrypt
+- `create_access_token`：`sub` = DB `username`
+- 依赖：`passlib[bcrypt]`（写入 `requirements.txt`）
 
 ### 4.4 API
 
@@ -202,33 +249,16 @@ Body: { "old_password": string, "new_password": string }
 
 | 校验 | 规则 |
 |------|------|
-| 认证 | `require_admin` |
-| `old_password` | bcrypt 校验当前哈希 |
+| `old_password` | 必须正确 |
 | `new_password` | 长度 ≥ 6 |
-| 成功 | 更新 `password_hash`、`update_time` |
 
-| 错误 | HTTP | 文案 |
-|------|------|------|
-| 旧密码错误 | 400 | 原密码不正确 |
-| 新密码过短 | 422 | 新密码至少 6 位 |
+成功：更新哈希；失败：400（原密码不正确）/ 422（新密码过短）。
 
 ### 4.5 前端 UI
 
-- 入口：`AdminLayout` 侧边栏底部，「退出登录」上方，「修改密码」文字按钮
-- 形式：Modal + Form
-  - 旧密码（`Input.Password`）
-  - 新密码
-  - 确认新密码（前端校验与 new 一致）
-- 成功流程：
-  1. `message.success('密码已修改，请重新登录')`
-  2. 清除 `admin_token`（复用 `logout` 逻辑）
-  3. `navigate('/admin/login')`
-
-### 4.6 安全说明
-
-- 仅支持修改当前登录管理员的密码（单管理员场景）
-- 不暴露 `password_hash`
-- 不在本次范围：多管理员、找回密码、密码强度策略（大小写数字）
+- 入口：`AdminLayout` 侧边栏，「退出登录」上方「修改密码」
+- Modal：旧密码 / 新密码 / 确认新密码
+- 成功：提示 → 清 token → 跳转 `/admin/login`
 
 ---
 
@@ -236,56 +266,51 @@ Body: { "old_password": string, "new_password": string }
 
 | 文件 | 变更 |
 |------|------|
-| `backend/app/models.py` | 新增 `AdminAccount` |
-| `backend/app/migrate.py` | `migrate_admin_account()` |
+| `backend/app/models.py` | `AdminAccount`；默认 status `待生成结果` |
+| `backend/app/migrate.py` | `migrate_evaluation_status_labels()`、`migrate_admin_account()` |
 | `backend/app/main.py` | startup 调用迁移 |
-| `backend/app/auth.py` | DB + bcrypt 认证 |
-| `backend/app/routers/auth.py` | `change-password` |
-| `backend/app/schemas.py` | `ChangePasswordRequest` |
-| `backend/app/services/evaluation.py` | `upsert_draft` 分支逻辑 |
-| `backend/requirements.txt` | bcrypt 依赖 |
-| `backend/tests/test_auth.py` | 新建：登录、改密 |
-| `backend/tests/test_evaluations.py` | 草稿分支、待确认改评语/改分 |
-| `web/src/pages/review/Evaluation.tsx` | 判定前移、自动暂存、晋升结果展示、去暂存按钮 |
+| `backend/app/services/evaluation.py` | 状态常量重命名、`upsert_draft` 分支、`submit` 校验 |
+| `backend/app/auth.py` / `routers/auth.py` | bcrypt + change-password |
+| `backend/tests/test_evaluations.py` | 新状态名 + 自动暂存分支 |
+| `backend/tests/test_auth.py` | 登录、改密 |
+| `web/src/pages/review/Evaluation.tsx` | 判定前移、自动暂存、状态/提交逻辑 |
+| `web/src/pages/admin/Summary.tsx` | 筛选选项新状态名 |
 | `web/src/routes/AdminLayout.tsx` | 修改密码入口 |
-| `web/src/pages/admin/ChangePassword.tsx` 或内联 Modal | 改密表单 |
 | `web/src/api/auth.ts` | `changePassword` |
-| `web/src/hooks/useAuth.ts` | 可选扩展 |
 
 ---
 
 ## 6. 测试要点
 
-### 6.1 晋升判定
+### 6.1 状态迁移
 
-1. 总分 1.8 → 生成无弹窗 → 实时计分显示「不通过晋升」→ 提交仅确认
-2. 总分 4.2 → 生成无弹窗 → 显示「通过晋升」
-3. 总分 3.0 → 生成弹窗 → 选同意/不同意 → 显示对应结果
-4. `待确认` + 总分 3.0 → 再次生成 → 可改选
-5. 提交弹窗不出现晋升二选一
+1. 库中旧 `待提交` 记录 → `待生成结果`
+2. 库中旧 `待确认` 记录 → `待提交`
+3. `已提交` 不变
 
-### 6.2 自动暂存
+### 6.2 晋升判定
 
-1. 改分后 1.5s 内自动保存；刷新可恢复
-2. 切换员工前保存旧员工草稿
-3. `待确认` 只改评语 → 保持 `待确认` + `reviewer_result`
-4. `待确认` 改任意分数 → `待提交`，晋升结果清空
-5. `已提交` 不触发保存
-6. 无「暂存」按钮
+1. 总分 ≤2 / ≥4 → 生成无弹窗，晋升结果正确
+2. 2–4 分 → 生成弹窗，可改选
+3. 提交仅确认，不出现晋升二选一
+4. `待提交` 无 `reviewer_result` 时提交按钮 disabled
 
-### 6.3 改密码
+### 6.3 自动暂存
 
-1. 首次启动从 env 种子可登录
-2. 旧密码错误 → 400
-3. 改密成功 → 旧密码不能登录，新密码可登录
-4. 前端清 token 跳转登录页
+1. `待生成结果` 改分/评语 → 保持 `待生成结果`
+2. `待提交` 只改评语 → 保持 `待提交` + `reviewer_result`
+3. `待提交` 改分 → 保持 `待提交`，结果清空，提交 disabled，提示重新生成
+4. 重新生成后 → 可提交
+5. 无「暂存」按钮
+
+### 6.4 改密码
+
+1. env 种子可登录；改密后旧密码失效；强制重新登录
 
 ---
 
 ## 7. 不在本次范围
 
 - 多管理员账号
-- 用户名修改
-- 评委端离线暂存（Service Worker）
+- 评委端离线暂存
 - 管理端密码强度策略 UI
-- 修改 `evaluation-resubmit` 已实施的 load / 重提逻辑（本 spec 为增量）
