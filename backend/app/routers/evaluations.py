@@ -15,7 +15,8 @@ from app.schemas import (
 )
 from app.services.evaluation import (
     generate_result,
-    load_evaluation,
+    find_active_record,
+    has_submitted_record,
     query_summary,
     record_to_dict,
     submit_record,
@@ -38,10 +39,12 @@ def load_eval(
     if not emp:
         return fail("员工不存在", status_code=404)
 
-    rec = load_evaluation(db, employee_id, reviewer_name.strip())
+    rec = find_active_record(db, employee_id, reviewer_name.strip())
+    submitted = has_submitted_record(db, employee_id, reviewer_name.strip())
     data = {
         "employee": UserInfoResponse.model_validate(emp).model_dump(),
         "record": record_to_dict(rec, emp) if rec else None,
+        "has_submitted": submitted,
     }
     return ok(data)
 
