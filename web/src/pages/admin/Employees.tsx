@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, Modal, Space, Table, Upload, message } from 'antd'
+import { Button, Input, Modal, Space, Table, Tooltip, Upload, message } from 'antd'
 import { DownloadOutlined, UploadOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -123,14 +123,87 @@ export default function Employees() {
   }
 
   const columns: ColumnsType<Employee> = [
-    { title: '姓名', dataIndex: 'name', key: 'name' },
-    { title: '当前职级', dataIndex: 'current_level', key: 'current_level', width: 100 },
-    { title: '目标职级', dataIndex: 'target_level', key: 'target_level', width: 100 },
     {
-      title: '近两年绩效',
-      dataIndex: 'performance_history',
-      key: 'performance_history',
+      title: '分管中心',
+      dataIndex: 'division_center',
+      key: 'division_center',
+      width: 120,
       render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: '一级部门',
+      dataIndex: 'department',
+      key: 'department',
+      width: 120,
+      render: (v: string | null) => v ?? '-',
+    },
+    { title: '工号', dataIndex: 'employee_no', key: 'employee_no', width: 100 },
+    { title: '姓名', dataIndex: 'name', key: 'name', width: 100 },
+    {
+      title: '学历',
+      dataIndex: 'education',
+      key: 'education',
+      width: 80,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: '岗位',
+      dataIndex: 'position',
+      key: 'position',
+      width: 140,
+      render: (v: string | null) => v ?? '-',
+    },
+    { title: '职级', dataIndex: 'current_level', key: 'current_level', width: 70 },
+    { title: '目标职级', dataIndex: 'target_level', key: 'target_level', width: 90 },
+    {
+      title: 'FY24年度等级',
+      dataIndex: 'perf_fy24',
+      key: 'perf_fy24',
+      width: 110,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: 'FY25年度等级',
+      dataIndex: 'perf_fy25',
+      key: 'perf_fy25',
+      width: 110,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: 'FY25H1等级',
+      dataIndex: 'perf_fy25h1',
+      key: 'perf_fy25h1',
+      width: 110,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: '入职时间',
+      dataIndex: 'join_date',
+      key: 'join_date',
+      width: 110,
+      render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD') : '-'),
+    },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      key: 'remark',
+      width: 120,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: '提名情况',
+      dataIndex: 'nomination_status',
+      key: 'nomination_status',
+      width: 100,
+      render: (v: string | null) => v ?? '-',
+    },
+    {
+      title: '提名理由',
+      dataIndex: 'nomination_reason',
+      key: 'nomination_reason',
+      width: 200,
+      ellipsis: { showTitle: false },
+      render: (v: string | null) => (v ? <Tooltip title={v}>{v}</Tooltip> : '-'),
     },
     {
       title: '更新时间',
@@ -143,6 +216,7 @@ export default function Employees() {
       title: '操作',
       key: 'action',
       width: 140,
+      fixed: 'right',
       render: (_, record) => (
         <Space>
           <Button
@@ -186,7 +260,7 @@ export default function Employees() {
           清空全部
         </Button>
         <Input.Search
-          placeholder="按姓名搜索"
+          placeholder="搜索姓名或工号"
           allowClear
           style={{ width: 240 }}
           value={searchName}
@@ -199,6 +273,7 @@ export default function Employees() {
         columns={columns}
         dataSource={employees}
         loading={loading}
+        scroll={{ x: 2400 }}
         pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
       />
 
