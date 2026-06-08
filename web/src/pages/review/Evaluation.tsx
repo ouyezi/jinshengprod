@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   AutoComplete,
   Button,
   Card,
@@ -73,6 +74,7 @@ export default function Evaluation() {
   const [highlightAdvantage, setHighlightAdvantage] = useState(false)
   const [highlightDisadvantage, setHighlightDisadvantage] = useState(false)
   const [pendingEmployeeId, setPendingEmployeeId] = useState<number | null>(null)
+  const [showSubmittedHint, setShowSubmittedHint] = useState(false)
 
   const readonly = status === '已提交'
   const canSubmit = status === '待确认' && !readonly
@@ -106,6 +108,7 @@ export default function Evaluation() {
           setStatus,
           setRecordId,
         })
+        setShowSubmittedHint(data.has_submitted && !data.record)
         await fetchStandards(data.employee.target_level)
       } catch (err) {
         message.error(err instanceof Error ? err.message : '加载评审数据失败')
@@ -188,6 +191,7 @@ export default function Evaluation() {
         setHighlightScores(Array(12).fill(false))
         setHighlightAdvantage(false)
         setHighlightDisadvantage(false)
+        setShowSubmittedHint(false)
       },
     })
   }
@@ -439,6 +443,14 @@ export default function Evaluation() {
 
         {employee && (
           <>
+            {showSubmittedHint && (
+              <Alert
+                type="info"
+                showIcon
+                message="您已提交过该员工的评审，如需修改请重新填写并提交，线下告知管理员保留哪一条。"
+              />
+            )}
+
             <ScoreMatrix
               scores={scores}
               onChange={setScores}
@@ -503,11 +515,20 @@ export default function Evaluation() {
               </Space>
             </Card>
 
-            {status && (
-              <Text type="secondary">
-                当前状态：{status}
-                {status === '已提交' && '（已锁定，不可修改）'}
-              </Text>
+            {employee && (
+              <div>
+                {status && (
+                  <Text type="secondary">
+                    当前状态：{status}
+                    {status === '已提交' && '（已锁定，不可修改）'}
+                  </Text>
+                )}
+                <br />
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  生成结果规则：总分 ≤ 2 直接「不通过晋升」；总分 ≥ 4 直接「通过晋升」；2 &lt; 总分
+                  &lt; 4 时评委需自行选择是否同意晋升。
+                </Text>
+              </div>
             )}
 
             <Space wrap>
