@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Date, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -91,7 +91,6 @@ class PromotionStandard(Base):
 
 class EvaluationRecord(Base):
     __tablename__ = "evaluation_record"
-    __table_args__ = (UniqueConstraint("employee_id", "reviewer_name", name="uq_employee_reviewer"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
