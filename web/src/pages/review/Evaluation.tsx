@@ -272,32 +272,35 @@ export default function Evaluation() {
     return true
   }
 
+  const resetFormKeepingReviewer = useCallback(() => {
+    cancelPending()
+    sessionLockedRef.current = false
+    setEmployee(null)
+    setEmployeeSearch('')
+    setPendingEmployeeId(null)
+    setScores([...EMPTY_SCORES])
+    setAdvantage('')
+    setDisadvantage('')
+    setStatus(null)
+    setRecordId(null)
+    setReviewerResult(null)
+    setStandards(Array(12).fill(''))
+    setHighlightScores(Array(12).fill(false))
+    setHighlightAdvantage(false)
+    setHighlightDisadvantage(false)
+    setShowSubmittedHint(false)
+    setSaveStatus('idle')
+    setSearchOptions([])
+    persistEmployeeId(null)
+  }, [cancelPending])
+
   const handleClear = () => {
     Modal.confirm({
       title: '清空重写',
       content: '确定清空当前填写内容吗？评委姓名将保留。',
       okText: '确定',
       cancelText: '取消',
-      onOk: () => {
-        sessionLockedRef.current = false
-        cancelPending()
-        setEmployee(null)
-        setEmployeeSearch('')
-        setPendingEmployeeId(null)
-        setScores([...EMPTY_SCORES])
-        setAdvantage('')
-        setDisadvantage('')
-        setStatus(null)
-        setRecordId(null)
-        setReviewerResult(null)
-        setStandards(Array(12).fill(''))
-        setHighlightScores(Array(12).fill(false))
-        setHighlightAdvantage(false)
-        setHighlightDisadvantage(false)
-        setShowSubmittedHint(false)
-        setSaveStatus('idle')
-        persistEmployeeId(null)
-      },
+      onOk: () => resetFormKeepingReviewer(),
     })
   }
 
@@ -383,16 +386,9 @@ export default function Evaluation() {
     cancelPending()
     setSaving(true)
     try {
-      const record = await submitEvaluation(recordId)
-      setStatus(record.status)
-      setRecordId(record.id)
-      setScores([...record.scores])
-      setAdvantage(record.advantage ?? '')
-      setDisadvantage(record.disadvantage ?? '')
-      setReviewerResult(record.reviewer_result ?? null)
-      setShowSubmittedHint(false)
-      setSaveStatus('idle')
+      await submitEvaluation(recordId)
       message.success('提交成功')
+      resetFormKeepingReviewer()
     } catch (err) {
       sessionLockedRef.current = false
       message.error(err instanceof Error ? err.message : '提交失败')
