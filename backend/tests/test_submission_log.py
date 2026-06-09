@@ -2,12 +2,14 @@ import json
 from datetime import datetime
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
-from app.database import Base
+from app.database import Base, get_db
+from app.main import app
 from app.models import UserInfo
 from app.services.evaluation import READY_SUBMIT_STATUS, submit_record, upsert_draft
 from app.services.submission_log import append_submission_log
@@ -41,6 +43,22 @@ def db(engine):
     session.commit()
     yield session
     session.close()
+
+
+@pytest.fixture
+def client(engine):
+    Session = sessionmaker(bind=engine)
+
+    def override_get_db():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -169,4 +187,22 @@ def test_submit_record_invalid_status_does_not_write_log(db, log_dir):
     with pytest.raises(ValueError, match="仅待提交状态可提交"):
         submit_record(db, rec.id)
 
+    assert list(log_dir.glob("*.jsonl")) == []
+
+
+def test_submit_api_succeeds_when_log_write_fails(client, db, log_dir, monkeypatch):
+    emp = db.query(UserInfo).first()
+    rec = _ready_record(db, emp)
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("app.services.submission_log.Path.open", boom)
+
+    resp = client.post("/api/evaluations/submit", json={"record_id": rec.id})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "已提交"
+
+    db.refresh(rec)
+    assert rec.status == "已提交"
     assert list(log_dir.glob("*.jsonl")) == []
