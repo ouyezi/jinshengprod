@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "dongfu123"
     access_token_expire_minutes: int = 480
+    submission_log_dir: str = "logs/submissions"
 
     class Config:
         env_file = ".env"
