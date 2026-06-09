@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base
 from app.models import UserInfo
-from app.services.evaluation import READY_SUBMIT_STATUS, upsert_draft
+from app.services.evaluation import READY_SUBMIT_STATUS, submit_record, upsert_draft
 from app.services.submission_log import append_submission_log
 
 
@@ -139,3 +139,34 @@ def test_append_submission_log_swallows_write_errors(db, log_dir, monkeypatch):
 
     monkeypatch.setattr("app.services.submission_log.Path.open", boom)
     append_submission_log(rec, emp)
+
+
+def test_submit_record_writes_submission_log(db, log_dir):
+    emp = db.query(UserInfo).first()
+    rec = _ready_record(db, emp)
+
+    submit_record(db, rec.id)
+
+    files = list(log_dir.glob("*.jsonl"))
+    assert len(files) == 1
+    payload = json.loads(files[0].read_text(encoding="utf-8").strip())
+    assert payload["record"]["status"] == "已提交"
+    assert payload["record"]["reviewer_name"] == "李评委"
+
+
+def test_submit_record_invalid_status_does_not_write_log(db, log_dir):
+    emp = db.query(UserInfo).first()
+    rec = upsert_draft(
+        db,
+        employee_id=emp.id,
+        reviewer_name="赵评委",
+        scores=[4] * 12,
+        advantage="a",
+        disadvantage="b",
+    )
+    assert rec.status == "待生成结果"
+
+    with pytest.raises(ValueError, match="仅待提交状态可提交"):
+        submit_record(db, rec.id)
+
+    assert list(log_dir.glob("*.jsonl")) == []

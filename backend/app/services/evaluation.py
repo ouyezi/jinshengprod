@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EvaluationRecord, UserInfo
 from app.scoring import calculate_scores
+from app.services.submission_log import append_submission_log
 
 DRAFT_STATUS = "待生成结果"
 READY_SUBMIT_STATUS = "待提交"
@@ -185,6 +186,8 @@ def submit_record(db: Session, record_id: int) -> EvaluationRecord:
     rec.update_time = datetime.utcnow()
     db.commit()
     db.refresh(rec)
+    emp = db.get(UserInfo, rec.employee_id)
+    append_submission_log(rec, emp)
     return rec
 
 
