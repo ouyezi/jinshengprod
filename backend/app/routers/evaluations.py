@@ -23,6 +23,7 @@ from app.services.evaluation import (
     upsert_draft,
 )
 from app.services.excel import build_summary_export
+from app.services.submission_log import append_submission_log
 
 router = APIRouter()
 
@@ -85,6 +86,7 @@ def submit(body: EvaluationSubmitRequest, db: Session = Depends(get_db)):
     try:
         rec = submit_record(db, body.record_id)
         emp = db.get(UserInfo, rec.employee_id)
+        append_submission_log(rec, emp)
         return ok(record_to_dict(rec, emp))
     except ValueError as e:
         return fail(str(e), status_code=409)
