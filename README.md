@@ -36,6 +36,10 @@ cd web
 npm run build
 ```
 
+## 提交日志备份
+
+评委正式提交评审后，后端会在 `backend/logs/submissions/` 下按日追加 JSONL 文件（如 `2026-06-09.jsonl`），记录完整评审快照，作为数据库旁路备份。日志写入失败不会阻断提交；可通过应用错误日志排查。目录已在 `.gitignore` 中忽略。
+
 ## 默认账号
 
 - 管理员：`admin` / `dongfu123`
