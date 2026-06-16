@@ -84,6 +84,41 @@ pm2 start ecosystem.config.js
 
 ---
 
+## 保活机制
+
+### 自动重启
+
+- **PM2 崩溃重启**：`ecosystem.config.js` 中 `autorestart: true`
+- **每日定时重启**：每天凌晨 3 点自动重启后端（`cron_restart: '0 3 * * *'`）
+
+### 健康检查（macOS LaunchAgent）
+
+由于 macOS `cron` 权限限制，使用 `launchd` 每 5 分钟检查一次后端健康状态：
+
+```bash
+# 加载健康检查任务
+launchctl load /Users/dongfuxlab/Library/LaunchAgents/com.jinsheng.healthcheck.plist
+
+# 查看任务状态
+launchctl list | grep com.jinsheng.healthcheck
+```
+
+健康检查日志：
+- `logs/healthcheck.log` — 每次检查结果
+- `logs/healthcheck-launchd.log` — launchd 标准输出
+- `logs/healthcheck-launchd-error.log` — launchd 错误输出
+
+### 防止 macOS 睡眠
+
+```bash
+# 临时阻止睡眠（当前终端有效）
+caffeinate -d -i -m -s
+```
+
+或在「系统设置 → 锁定屏幕」中关闭自动睡眠。
+
+---
+
 ## 服务管理
 
 ### 查看服务状态
