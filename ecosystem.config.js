@@ -9,7 +9,13 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
+      min_uptime: '10s',
+      max_restarts: 10,
+      listen_timeout: 8000,
+      kill_timeout: 5000,
       max_memory_restart: '512M',
+      // 每天凌晨 3 点自动重启，释放内存、刷新连接
+      cron_restart: '0 3 * * *',
       log_file: '/Users/dongfuxlab/workspace/jinshengprod/logs/pm2-backend.log',
       out_file: '/Users/dongfuxlab/workspace/jinshengprod/logs/pm2-backend-out.log',
       error_file: '/Users/dongfuxlab/workspace/jinshengprod/logs/pm2-backend-error.log',
